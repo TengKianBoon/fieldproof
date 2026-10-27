@@ -16,6 +16,12 @@
 ## 2026-10-27 — RM5 observers: no control surface found
 - Inspected built-in binary help (`--help`, `skills --help`): no observer flags/subcommand; only related knobs seen are `--parallel-tool-calls` and `--approval-judge`. No settings file exists in workspace; `/usage` and TUI values are operator-reported, not self-observed. Cannot verify per-worker observer multiplication from available evidence. Retained: single worker, verification/goal tracking only, no observer changes. No keys invented.
 
-## 2026-10-27 — RM6 build baseline (approved, NOT started)
+## 2026-10-27 — RM6 build baseline (build started lead-only; G1 NOT accepted per 5X22)
 - TS Vite mobile UI + Netlify Functions; mocked full loop first; adapters; server-only keys; persistent job/idempotency/retry/cost state; no insufficient-evidence-as-match.
 - S$150 aggregate ceiling (prior cumulative Muse estimate US$1.44); first parallel batch cap S$10; ≤3 workers only after G0 + observer validation; 4 repair attempts; 2 closeups/item; hooks need 5ofX exact-command review; no real data before consent receipts.
+
+## 2026-10-27 — 5X22 corrections (supersede any DONE/G1-accepted claims)
+- Batch 1 NOT accepted. 25 then 37 mocked passes are NOT G1 acceptance.
+- Key correction: root 8ofX/.env.local EXISTS (META_API_KEY per operator); earlier missing-key claim withdrawn. Value never read/printed; paid calls paused.
+- Fixtures: H1..H6 + dev .bin files are tagged random bytes, NOT images. B5 real PNGs (clear-B17/blurred-B17/covered-B71 + IMAGES.md hashes) are dev fixtures only; NO frozen real-image eval claimed. Paid spike stays off until image gate + operator release.
+- B1-B4 repaired locally ($0 model spend): upload-bound capture, server UUIDs + ownership/consent gates, 2MiB chunks + file-backed blobs, versioned CAS + concurrency tests. Commits 7ec4a3e, be5aee8, 8c4d061. Awaiting review; B6-B13 backlog.
