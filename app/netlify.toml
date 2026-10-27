@@ -1,5 +1,7 @@
 [build]
-  functions = "app/netlify/functions"
+  base = "app"
+  command = "npm run build"
+  publish = "dist"
 
 [functions]
-  directory = "app/netlify/functions"
+  directory = "netlify/functions"

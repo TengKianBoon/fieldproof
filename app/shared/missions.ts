@@ -6,6 +6,8 @@
 // matched, mismatched or inconclusive.
 // B6g: toReview itself requires capturing (no double-send, no post-decision
 // resend): anything else returns not_capturing, never a 500 throw.
+// B8: mission ids are crypto-random (no timestamps or counters).
+import { randomUUID } from "node:crypto";
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
@@ -24,10 +26,8 @@ export interface ServerEvidence {
 const REVIEWABLE_ITEM = ["matched", "mismatched", "inconclusive"];
 const TERMINAL_ITEM = ["matched", "mismatched", "confirmed_match", "confirmed_mismatch", "inconclusive"];
 
-let seq = 0;
 export function newId(prefix: string): string {
-  seq += 1;
-  return `${prefix}_${Date.now().toString(36)}_${seq}`;
+  return `${prefix}_${randomUUID()}`;
 }
 
 export class Missions {
