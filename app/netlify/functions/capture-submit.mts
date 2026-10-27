@@ -2,10 +2,17 @@
 // observedLabel/readable is rejected outright. The server validates the upload
 // record (mission/item/completion/hash), reads evidence through the
 // server-side reader adapter, and stores uploadId + serverHash on the item.
-import { ctx, json, needToken, uploadBytes } from "../lib/_ctx.mts";
+import { blobsEndpoint, ctx, json, needToken, uploadBytes } from "../lib/_ctx.mts";
+import { captureSparkHandler } from "../lib/capture-spark.mts";
+import { readerMode } from "../../shared/sparkReader.ts";
 import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 
 export default async function handler(req: Request): Promise<Response> {
+  if (readerMode(process.env) === "spark") return captureSparkHandler(req);
+  return blobsEndpoint(req, mockCapture);
+}
+
+async function mockCapture(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "method" });
   const body = (await req.json()) as Record<string, unknown>;
   const missionId = body.missionId;

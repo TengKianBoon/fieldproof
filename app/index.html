@@ -12,8 +12,9 @@
 </head>
 <body>
   <h1>FieldProof</h1>
-  <div id="app"><p>Loading mocked mission…</p></div>
-  <pre id="log"></pre>
+  <div id="app"><p>Loading…</p></div>
+  <pre id="log" hidden></pre>
+  <script>if (window.location.hash === "#debug") { document.getElementById("log").hidden = false; }</script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

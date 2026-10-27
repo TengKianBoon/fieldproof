@@ -13,6 +13,7 @@ export const CAS_RETRY_BOUND = 8;
 export interface BlobsKVBackend {
   getWithMetadata(key: string): Promise<{ data: string; etag: string } | null>;
   setJSON(key: string, value: string, opts?: { onlyIfMatch?: string; onlyIfNew?: boolean }): Promise<{ modified: boolean; etag?: string }>;
+  list(prefix: string): Promise<Array<{ key: string; etag: string }>>;
 }
 
 export interface BlobsBytesBackend {
@@ -39,6 +40,13 @@ export class MockBlobsKVBackend implements BlobsKVBackend {
     const etag = `e${this.n}`;
     this.m.set(key, { data: value, etag });
     return { modified: true, etag };
+  }
+  async list(prefix: string): Promise<Array<{ key: string; etag: string }>> {
+    const out: Array<{ key: string; etag: string }> = [];
+    for (const [key, v] of this.m) {
+      if (key.startsWith(prefix)) out.push({ key, etag: v.etag });
+    }
+    return out;
   }
 }
 
@@ -130,6 +138,7 @@ export interface BlobsStoreLike {
   set(key: string, data: string | ArrayBuffer, opts?: { onlyIfMatch?: string } | { onlyIfNew?: boolean }): Promise<{ modified: boolean; etag?: string }>;
   get(key: string, opts: { type: "arrayBuffer" }): Promise<ArrayBuffer | null>;
   delete(key: string): Promise<void>;
+  list(opts: { prefix?: string }): Promise<{ blobs: Array<{ key: string; etag: string }> }>;
 }
 
 // Production backend factory (NOT used offline; S3 deploy path). Region is
@@ -147,6 +156,10 @@ export async function realBlobsBackends(
   const kv: BlobsKVBackend = {
     async getWithMetadata(key: string) {
       return store.getWithMetadata(key, { type: "text" });
+    },
+    async list(prefix: string) {
+      const r = await store.list({ prefix });
+      return r.blobs.map((b) => ({ key: b.key, etag: b.etag }));
     },
     async setJSON(key: string, value: string, opts?: { onlyIfMatch?: string; onlyIfNew?: boolean }) {
       // H1: value is already a JSON string — store.set keeps it verbatim.

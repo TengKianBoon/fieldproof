@@ -36,3 +36,6 @@ app/.local-data/
 app/.local-fixtures/
 .env.local
 !.env.example
+
+# S2d (5X44): Netlify CLI state (site ID) must never reach git.
+.netlify/

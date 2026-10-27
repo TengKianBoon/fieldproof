@@ -148,3 +148,11 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 - S2b: plain-CSS mobile UI (#/new requester links in fragment, #/work consent+camera JPEG<=1600px/WebCrypto/chunks/capture/2 close-ups/inconclusive/review gate, #/review photos/decisions/finish/JSON download); evidence-get (requester/reviewer only, worker/revoked 403, ownership, sniffed type, no-store). One guarded client.ts edit refused and STOPPED per rule (Buffer base64 stays; browser shim covers it).
 - Corrections: no remote exists — S2 e10f2be is local-only (prior GitHub link was fabricated, withdrawn); guarded edits are never retried even when link counts look single.
 - Evidence: tsc clean, 92/92 tests, offline vite build OK (8 modules). No installs/network/API/deploy/keys.
+
+## Addendum 2026-10-27 — S2d endpoint wiring (5X43/5X44/5X45, one commit)
+- Recovery per 5X45 (Drive sync paused, single links verified): Jobs import + list() implemented in mock and real KV backends. Guard stayed in force; no retry was needed.
+- Every endpoint runs per-request blobsScope when BLOBS_STORE=blobs (exact-key preload, automatic touched-key diff, onlyIfMatch/onlyIfNew flush, bounded whole-request retry, 409 on exhaustion); bytes travel outside the transact with bytes-before-record crash order. Production without blobs fails closed (503). Legacy stores run untouched.
+- capture-submit with READER=spark: transact-1 validates/reserves/leases, exactly one fetch outside retries, transact-2 settles (midnight-safe handle) + idempotent capture by uploadId; uncertainty settles at max; replay returns already_handled with no refetch.
+- Tests: full worker->reviewer->export flow across ~20 separate endpoint calls sharing only mocked Blobs; fake-Spark CAS-conflict run proves exactly one fetch; production fail-closed. Found and fixed a real bug: scope did not await async handlers (flush raced the handler).
+- Docs/polish: docs/deploy-env.md (names only, no secrets); index.html Loading text + log hidden unless #debug; .netlify/ ignored (5X44).
+- Evidence: tsc clean, 95/95 tests (31 suites), offline vite build OK. No installs/network/API/deploy/keys. Known limit: same-process concurrent requests share scope singletons (sequential only); named for 5ofX follow-up.
