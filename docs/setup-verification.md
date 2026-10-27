@@ -84,6 +84,14 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 - BASELINE CORRECTION: US$5.44 was an earlier reading, NOT a measured repair-close baseline — baseline UNVERIFIED, nothing invented. Checkpoint just measured: cumulative est. USD12.16; delta 6.72 since 5.44; remaining USD3.28 under interim USD10 ceiling.
 - Commit for this slice was DECLINED at approval — all R1-R9 work is UNCOMMITTED in the tree. No push. Next: B6a-e per 5X27, then toolchain/B8-B13; paid run only after section-4 gate (review + network approval + TKB spend agreement).
 
+## Addendum 2026-10-27 — B6a-e implemented, 50/50 green, committed 8eadfdd
+- 4X31 fixture blocker honored: blurred-B17 legible, R7-on-blurred invalid; NO fixture change and NO paid run pending 5ofX decision. Spike stays quarantined.
+- B6a: matched items reviewable (overturn false clears); finishReview needs explicit reviewer decision per matched/mismatched item (review_incomplete); terminal set fixed (confirmed_*).
+- B6b: export requester/reviewer only (worker 403). B6c: worker view is capture brief, no expected labels, no decisions. B6d: revocation enforced on state/export (persistence B9). B6e: capture/close-up/upload-init/chunk/complete require capturing; toReview needs all items matched/mismatched/inconclusive.
+- Suite 50/50 (new b6 negative tests; HTTP decided-export incl. role views + revoke). Two real test-expectation failures fixed (terminal set; late-upload now correctly refused at init).
+- Anomaly: app/tests/handlers.test.ts briefly absent from the tree mid-turn (cause unknown — Drive sync suspected); restored by full rewrite, suite re-verified green before commit. No data loss; no .git deletions.
+- Spend: $0.00 app/model. Cumulative est. USD12.16 checkpoint stands; ~USD3.28 under interim ceiling per operator math. Next: toolchain/B8-B13 per order; paid run only after fixture decision + section-4 gate.
+
 ## Baseline 2026-10-27 — batch-1 repair segment closed (5X25/D20)
 - Last operator-verified cumulative: US$5.44 (20,186,416 tokens; observers 327 / 4,049,031 tokens). Live delta since then NOT visible in-session; do not claim usage zero — coding/observers count.
 - Batch-2 (D20): S$20 within aggregate S$150, lead-only. Interim ceiling: US$10 incremental until verified figures arrive (conservative planning factor S$2/US$1 on delta since US$1.44 is NOT an FX quote).
