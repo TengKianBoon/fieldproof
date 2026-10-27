@@ -1,0 +1,37 @@
+# FieldProof setup .gitignore — local-only, no secrets in repo
+# Credentials / environment secrets
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+*_token*
+*_secret*
+
+# Generated media / test evidence
+generated_media/
+test-evidence/
+*.blend1
+renders/
+captures/
+samples/out/
+
+# Transient / OS / editor
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+.vscode/
+.idea/
+
+# FieldProof app (R003)
+node_modules/
+app/dist/
+app/.local-data/
+app/.local-fixtures/
+.env.local
