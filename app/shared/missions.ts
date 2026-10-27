@@ -1,8 +1,9 @@
-// Mission aggregate (B4 CAS; B14/B7 routing; B6 review/export gates).
-// Comparison ONLY for clear readability with non-empty labels. Blurred keeps
-// its value but routes unclear. Null/empty routes unclear, never mismatched.
-// B6: human decide() requires in_review; finishReview() requires all items
-// terminal and moves decided; export callers enforce decided.
+// Mission aggregate (CAS writes; B14/B7 routing; B6 review/export/state gates).
+// Comparison ONLY for clear readability with a non-empty label.
+// B6a: matched items are reviewable (catch false clears); finishReview needs
+// an explicit reviewer decision on every matched/mismatched item.
+// B6e: capture and close-up require capturing; toReview needs every item
+// matched, mismatched or inconclusive.
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
@@ -18,7 +19,8 @@ export interface ServerEvidence {
   readability: Readability;
 }
 
-const TERMINAL_ITEM = ["matched", "confirmed_match", "confirmed_mismatch", "inconclusive"];
+const REVIEWABLE_ITEM = ["matched", "mismatched", "inconclusive"];
+const TERMINAL_ITEM = ["matched", "mismatched", "confirmed_match", "confirmed_mismatch", "inconclusive"];
 
 let seq = 0;
 export function newId(prefix: string): string {
@@ -90,6 +92,10 @@ export class Missions {
     return { m, v: m.version };
   }
 
+  private requireCapturing(m: Mission): string | null {
+    return m.state === "capturing" ? null : "not_capturing";
+  }
+
   acceptConsent(missionId: string, workerId: string, version: string): Result<Mission> {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
@@ -108,6 +114,8 @@ export class Missions {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
     const { m, v } = l;
+    const gated = this.requireCapturing(m);
+    if (gated !== null) return fail(gated);
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "expected" && o.state !== "closeup_requested" && o.state !== "unclear") {
@@ -135,6 +143,8 @@ export class Missions {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
     const { m, v } = l;
+    const gated = this.requireCapturing(m);
+    if (gated !== null) return fail(gated);
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "unclear") return fail("not_unclear");
@@ -159,6 +169,7 @@ export class Missions {
     return this.commit(m, v);
   }
 
+  // B6a: matched items are reviewable too (overturn false clears).
   decide(missionId: string, itemId: string, decision: string): Result<Mission> {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
@@ -166,11 +177,11 @@ export class Missions {
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (m.state !== "in_review") return fail("not_in_review");
-    if (o.state !== "mismatched") return fail("nothing_to_review");
+    if (o.state !== "mismatched" && o.state !== "matched") return fail("nothing_to_review");
     if (decision !== "confirmed_match" && decision !== "confirmed_mismatch" && decision !== "inconclusive") {
       return fail("bad_decision");
     }
-    transitionItem("mismatched", decision);
+    transitionItem(o.state, decision);
     o.state = decision;
     m.reviewerDecision[itemId] = decision;
     return this.commit(m, v);
@@ -180,19 +191,27 @@ export class Missions {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
     const { m, v } = l;
+    for (const e of m.expected) {
+      if (!REVIEWABLE_ITEM.includes(m.observed[e.itemId].state)) return fail("items_open");
+    }
     transitionMission(m.state, "in_review");
     m.state = "in_review";
     return this.commit(m, v);
   }
 
-  // B6: all items terminal -> decided. Export callers require decided.
+  // B6a: every matched/mismatched item needs an explicit reviewer decision;
+  // worker-terminal inconclusive items do not.
   finishReview(missionId: string): Result<Mission> {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
     const { m, v } = l;
     if (m.state !== "in_review") return fail("not_in_review");
     for (const e of m.expected) {
-      if (!TERMINAL_ITEM.includes(m.observed[e.itemId].state)) return fail("items_open");
+      const o = m.observed[e.itemId];
+      if (!TERMINAL_ITEM.includes(o.state)) return fail("items_open");
+      if ((o.state === "matched" || o.state === "mismatched") && m.reviewerDecision[e.itemId] === undefined) {
+        return fail("review_incomplete");
+      }
     }
     transitionMission("in_review", "decided");
     m.state = "decided";

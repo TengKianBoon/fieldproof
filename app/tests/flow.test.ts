@@ -35,15 +35,8 @@ function ingest(
   return { uploadId, serverHash: done.value?.serverHash as string };
 }
 
-function submit(ms: Missions, id: string, item: string, file: string) {
-  const s = (ms as unknown as { load: (x: string) => Mission }).load(id);
-  void s;
-  return { ms, id, item, file };
-}
-
-// B1 loop at core level + B6 gates: decide needs in_review (tested in
-// handlers), finishReview needs all-terminal, export needs decided.
-describe("phone loop via server evidence (B1+B6)", () => {
+// Full loop to a decided export (B1 evidence + B6 gates + B14 routing).
+describe("phone loop via server evidence (B1+B6+B14)", () => {
   it("runs the full loop to a decided export", () => {
     const store = new MemoryStore();
     const ms = new Missions(store);
@@ -60,9 +53,8 @@ describe("phone loop via server evidence (B1+B6)", () => {
       ms.submitCapture(id, "box1", { uploadId: e1.uploadId, serverHash: e1.serverHash, label: s1.label, readability: s1.readability }).value?.observed.box1.state,
       "mismatched",
     );
-    // Decide before review is gated.
     assert.equal(ms.decide(id, "box1", "confirmed_mismatch").error, "not_in_review");
-    // box2: matched. box3: covered -> unclear x3 -> inconclusive.
+    // box2: matched; box3: covered -> unclear x3 -> inconclusive.
     const e2 = ingest(up, reader, id, "box2", "clear-B17.png", "B17");
     const s2 = reader.read(readFileSync("app/.local-fixtures/img/clear-B17.png"));
     assert.equal(
@@ -81,17 +73,17 @@ describe("phone loop via server evidence (B1+B6)", () => {
     assert.equal(sub3().value?.observed.box3.state, "unclear");
     assert.equal(ms.markInconclusive(id, "box3").value?.observed.box3.state, "inconclusive");
 
-    // Export before decision is gated.
     assert.equal(ms.exportPack(id, 4 * 1024 * 1024).error, "not_decided");
     assert.equal(ms.toReview(id).value?.state, "in_review");
-    assert.equal(ms.finishReview(id).error, "items_open"); // box1 still mismatched
+    assert.equal(ms.finishReview(id).error, "review_incomplete"); // box1 undecided
     assert.equal(ms.decide(id, "box1", "confirmed_mismatch").value?.observed.box1.state, "confirmed_mismatch");
+    assert.equal(ms.finishReview(id).error, "review_incomplete"); // box2 (matched) undecided
+    assert.equal(ms.decide(id, "box2", "confirmed_match").value?.observed.box2.state, "confirmed_match");
     assert.equal(ms.finishReview(id).value?.state, "decided");
     const pack = ms.exportPack(id, 4 * 1024 * 1024);
     assert.equal(pack.ok, true);
     const parsed = JSON.parse(pack.value?.pack as string) as { mission: { observed: Record<string, { observedLabel: string | null }> } };
     assert.equal(parsed.mission.observed.box1.observedLabel, "B17");
     assert.equal(ms.exportPack(id, 10).error, "export_too_large");
-    void submit;
   });
 });

@@ -1,8 +1,9 @@
 // upload-init / upload-chunk / upload-complete (worker; B2 ownership rules).
 // Server mints crypto-random uploadIds (client proposals ignored). Init
-// requires a consented+capturing mission and a valid item. Every chunk and
-// completion re-checks token-mission and record item ownership. Init is
-// idempotent per idempotency key. Usage counter commits via CAS loop (B4),
+// requires a consented+capturing mission and a valid item; chunk/complete
+// require capturing too (B6e: no late evidence once review starts). Every
+// chunk and completion re-checks token-mission and record item ownership.
+// Init is idempotent per idempotency key. Usage counter commits via CAS loop,
 // never bare get-modify-set.
 import { ctx, json, needToken, store } from "./_ctx.mts";
 import { sha256Hex } from "../../shared/hash.ts";
@@ -37,6 +38,13 @@ function storedBytesTotal(uploadId: string): number {
   if (raw === null) return 0;
   const rec = JSON.parse(raw) as { manifest: { bytesTotal: number } };
   return Number(rec.manifest.bytesTotal);
+}
+
+function capturing(missionId: string): { ok: boolean; error?: string } {
+  const m = ctx().missions.load(missionId);
+  if (m === null) return { ok: false, error: "unknown_mission" };
+  if (m.state !== "capturing") return { ok: false, error: "not_capturing" };
+  return { ok: true };
 }
 
 export async function initHandler(req: Request): Promise<Response> {
@@ -105,6 +113,8 @@ export async function chunkHandler(req: Request): Promise<Response> {
   if (typeof missionId !== "string") return json(400, { error: "bad_input" });
   const t = needToken(body, missionId, "worker");
   if (!t.ok) return json(403, { error: t.error });
+  const cap = capturing(missionId);
+  if (!cap.ok) return json(400, { error: cap.error });
   const { uploads } = ctx();
   if (typeof body.uploadId !== "string" || typeof body.index !== "number" || typeof body.bytesB64 !== "string") {
     return json(400, { error: "bad_input" });
@@ -126,6 +136,8 @@ export async function completeHandler(req: Request): Promise<Response> {
   if (typeof missionId !== "string") return json(400, { error: "bad_input" });
   const t = needToken(body, missionId, "worker");
   if (!t.ok) return json(403, { error: t.error });
+  const cap = capturing(missionId);
+  if (!cap.ok) return json(400, { error: cap.error });
   const { uploads, ledger } = ctx();
   if (typeof body.uploadId !== "string") return json(400, { error: "bad_input" });
   const uploadId = String(body.uploadId);

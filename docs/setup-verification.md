@@ -68,6 +68,22 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 - Git: named-file commits only (8c4d061, 25 files); this run showed LF/CRLF notices only, no broken-ref errors in commit output (desktop.ini warnings reported earlier, untouched). No push/deploy.
 - Spend: $0.00 app/model (all local, spike paused). Session cumulative per operator: US$5.44 at segment start, +US$0.75 authorized; live total not visible here — operator to confirm against US$6.19 stop and S$10 batch. B6-B13 backlog; stopped for review.
 
+## Addendum 2026-10-27 — batch-2 slice 1 (commit 583dc7e; G1 still unaccepted)
+- B14: only clear+label compared; blurred B17 never matched, value retained, inconclusive after 2 close-ups. B7: null/empty -> unclear, never mismatched.
+- B6: decide needs in_review; finishReview needs all-terminal; export needs decided; worker state-view hides reviewerDecision; review-flow handlers (toReview/markInconclusive/finishReview) added; full HTTP decided-export path tested.
+- Upload-record CAS (chunk/complete conflict surfacing) + cross-mission chunk/complete denial tests. Suite 41/41 mocked (not acceptance).
+- Spike: harness dry-run passes (prompt has no expected values; endpoint unset); dispatch quarantined (no confirmed endpoint/schema, key never loaded, SPIKE_CONFIRMED unset). Paid calls $0.00.
+- Contracts updated (api/acceptance/storage-production.md with Postgres/Blobs requirements). Memory batch-2 entry declined by approval — facts live here.
+- Spend: $0.00 app/model this slice. Operator baseline US$5.44; live delta invisible here; US$10 interim incremental ceiling applies; S$20 batch-2 within S$150. No npm/tsc/vite in sandbox (no typecheck/build smoke). B8-B13 undefined, untouched. No deploy/subagents.
+
+## Addendum 2026-10-27 — spike R1-R9 implemented, dry-run reviewed, NO paid run (UNCOMMITTED)
+- 5X28 evidence adopted (endpoint POST https://api.meta.ai/v1/responses, muse-spark-1.3 Standard, reasoning medium, text.format json_schema, usage fields, Standard prices, store:false). Cancelled web fetch replaced; no web access used.
+- R1-R9 in app/scripts/spike.mts: hardcoded endpoint+model (no overrides), per-image requests, reworded prompt (244 chars, no expected values), R3 mapping, R4 usage formula (invented x-cost header deleted), R5 bound US$0.0585 est. < US$0.50 (2000-token input labeled ESTIMATE, no hard-cap claim), R6 key only under --run+SPIKE_CONFIRMED (never printed), R7 post-hoc scoring, R8 receipt incl. raw excerpts to muse-runs/.
+- S1-S6 dispatch rules implemented; S7 storage-production citation corrected to D15/D18 (D19 is Git-location, unrelated).
+- Dry-run exit 0 (sanitized output in muse-runs/spike-dryrun-2026-10-27.md for 4ofX/5ofX review). Suite 46/46 incl. costing/scoring tests. SPIKE_CONFIRMED unset; key never loaded.
+- BASELINE CORRECTION: US$5.44 was an earlier reading, NOT a measured repair-close baseline — baseline UNVERIFIED, nothing invented. Checkpoint just measured: cumulative est. USD12.16; delta 6.72 since 5.44; remaining USD3.28 under interim USD10 ceiling.
+- Commit for this slice was DECLINED at approval — all R1-R9 work is UNCOMMITTED in the tree. No push. Next: B6a-e per 5X27, then toolchain/B8-B13; paid run only after section-4 gate (review + network approval + TKB spend agreement).
+
 ## Baseline 2026-10-27 — batch-1 repair segment closed (5X25/D20)
 - Last operator-verified cumulative: US$5.44 (20,186,416 tokens; observers 327 / 4,049,031 tokens). Live delta since then NOT visible in-session; do not claim usage zero — coding/observers count.
 - Batch-2 (D20): S$20 within aggregate S$150, lead-only. Interim ceiling: US$10 incremental until verified figures arrive (conservative planning factor S$2/US$1 on delta since US$1.44 is NOT an FX quote).

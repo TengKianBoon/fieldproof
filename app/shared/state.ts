@@ -1,4 +1,5 @@
 // Mission/item transition table (plain code). Illegal transitions throw.
+// B6a: matched items are reviewable (confirm or overturn false clears).
 import type { MissionState, ItemState } from "./types.ts";
 
 const MISSION_NEXT: Record<MissionState, MissionState[]> = {
@@ -17,7 +18,7 @@ const ITEM_NEXT: Record<ItemState, ItemState[]> = {
   observed_clear: ["matched", "mismatched", "abandoned"],
   unclear: ["closeup_requested", "inconclusive", "abandoned"],
   closeup_requested: ["observed_clear", "unclear", "abandoned"],
-  matched: ["abandoned"],
+  matched: ["confirmed_match", "confirmed_mismatch", "inconclusive", "abandoned"],
   mismatched: ["confirmed_match", "confirmed_mismatch", "inconclusive", "abandoned"],
   confirmed_match: [],
   confirmed_mismatch: [],

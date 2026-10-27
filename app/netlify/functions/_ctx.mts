@@ -66,18 +66,19 @@ export function isRevoked(nonce: string): boolean {
   return revoked.has(nonce);
 }
 
+// B6d hook + test seam: revocation source shared by all endpoints.
+// Persisting revocations is B9; this set is process-scoped (documented).
+export function revokeNonce(nonce: string): void {
+  revoked.add(nonce);
+}
+
 export function needToken(body: Record<string, unknown>, missionId: string, role: string): Result<string> {
-  const t = needTokenBody(body);
-  if (t === null) return fail("missing_token");
+  const t = body.token;
+  if (typeof t !== "string") return fail("missing_token");
   const v = verifyLink(secret(), t, Date.now(), missionId, isRevoked);
   if (!v.ok) return fail(v.error as string);
   if ((v.value as { role: string }).role !== role) return fail("wrong_role");
   return ok(t);
-}
-
-function needTokenBody(body: Record<string, unknown>): string | null {
-  const t = body.token;
-  return typeof t === "string" ? t : null;
 }
 
 export function json(status: number, body: unknown): Response {

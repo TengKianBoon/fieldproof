@@ -65,6 +65,7 @@ describe("cross-mission chunk/complete", () => {
     bMission = b.missionId;
     bWorker = b.worker;
     await jsonOf(await handlerConsent(req({ missionId: aMission, token: aWorker, workerId: "w", consentVersion: "v1" })));
+    await jsonOf(await handlerConsent(req({ missionId: bMission, token: bWorker, workerId: "w", consentVersion: "v1" })));
     const init = await jsonOf(
       await initHandler(
         req({ missionId: aMission, token: aWorker, idempotencyKey: "x1", manifest: { missionId: aMission, itemId: "b1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
@@ -73,10 +74,11 @@ describe("cross-mission chunk/complete", () => {
     uploadId = String(init.body.uploadId);
   });
 
-  it("denies cross-mission chunk and complete", async () => {
+  it("denies cross-mission chunk and complete with ownership errors", async () => {
     const all = new Uint8Array(100).fill(4);
     const b64 = Buffer.from(all).toString("base64");
     const hash = sha256Hex(all);
+    // Both missions capturing: the denial must come from ownership, not state.
     const crossChunk = await jsonOf(
       await chunkHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "b1", index: 0, bytesB64: b64, hash })),
     );
@@ -86,6 +88,7 @@ describe("cross-mission chunk/complete", () => {
       await completeHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "b1", idempotencyKey: "x1" })),
     );
     assert.equal(crossComplete.status, 403);
+    assert.equal(crossComplete.body.error, "upload_ownership");
     const own = await jsonOf(
       await chunkHandler(req({ missionId: aMission, token: aWorker, uploadId, itemId: "b1", index: 0, bytesB64: b64, hash })),
     );
