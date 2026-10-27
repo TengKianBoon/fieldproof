@@ -101,6 +101,12 @@ export async function sparkRead(
   if (!Number.isInteger(max) || max <= 0) return { ok: false, error: "bad_max" };
   const r = ledger.reserve(args.caller, args.missionId, args.requestId, args.purpose ?? "spark-read", max);
   if (!r.ok) return { ok: false, error: r.error as string };
+  const prior = r.value as import("./ledger.ts").LedgerEntry;
+  // Idempotent result handle: only a live `reserved` entry proceeds to the
+  // paid call. A retried requestId that is already settled/uncertain/refunded
+  // returns here WITHOUT fetching, so no CAS retry can repeat the charge; a
+  // fresh attempt needs a fresh requestId (manual recovery path).
+  if (prior.status !== "reserved") return { ok: false, error: "already_handled" };
   const settleMax = (): Result<import("./ledger.ts").LedgerEntry> => ledger.settle(args.caller, args.missionId, args.requestId, max);
   const key = deps.key ?? process.env.META_API_KEY;
   if (typeof key !== "string" || key === "") {

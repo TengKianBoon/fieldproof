@@ -122,25 +122,40 @@ export class BlobsBlobStore {
   }
 }
 
+// Minimal production store surface (H1: raw strings go through `set`, never
+// `setJSON`, so a value that is already a JSON string is kept verbatim and
+// never double-encoded; the mock backend and the H1 fake reproduce this).
+export interface BlobsStoreLike {
+  getWithMetadata(key: string, opts: { type: "text" }): Promise<{ data: string; etag: string } | null>;
+  set(key: string, data: string | ArrayBuffer, opts?: { onlyIfMatch?: string } | { onlyIfNew?: boolean }): Promise<{ modified: boolean; etag?: string }>;
+  get(key: string, opts: { type: "arrayBuffer" }): Promise<ArrayBuffer | null>;
+  delete(key: string): Promise<void>;
+}
+
 // Production backend factory (NOT used offline; S3 deploy path). Region is
-// always explicit; consistency is always strong. Reads untrusted input only
-// from the documented Blobs response fields.
-export async function realBlobsBackends(storeName: string = BLOBS_STORE_NAME, region: string = BLOBS_DEFAULT_REGION): Promise<{ kv: BlobsKVBackend; bytes: BlobsBytesBackend }> {
-  const { getStore } = await import("@netlify/blobs");
-  const store = getStore({ name: storeName, consistency: "strong", region: region as "us-east-2" });
+// always explicit; consistency is always strong. `deps.getStore` injects a
+// fake for the H1 regression test; production passes none and gets the real
+// @netlify/blobs store.
+export async function realBlobsBackends(
+  storeName: string = BLOBS_STORE_NAME,
+  region: string = BLOBS_DEFAULT_REGION,
+  deps: { getStore?: (opts: { name: string; consistency: "strong"; region: string }) => BlobsStoreLike } = {},
+): Promise<{ kv: BlobsKVBackend; bytes: BlobsBytesBackend }> {
+  const makeStore = deps.getStore
+    ?? (((await import("@netlify/blobs")).getStore) as unknown as (opts: { name: string; consistency: "strong"; region: string }) => BlobsStoreLike);
+  const store = makeStore({ name: storeName, consistency: "strong", region });
   const kv: BlobsKVBackend = {
     async getWithMetadata(key: string) {
-      const v = (await store.getWithMetadata(key, { type: "text" })) as { data?: unknown; etag?: unknown } | null;
-      if (v === null || typeof v.data !== "string" || typeof v.etag !== "string") return null;
-      return { data: v.data, etag: v.etag };
+      return store.getWithMetadata(key, { type: "text" });
     },
     async setJSON(key: string, value: string, opts?: { onlyIfMatch?: string; onlyIfNew?: boolean }) {
+      // H1: value is already a JSON string — store.set keeps it verbatim.
       const r = opts?.onlyIfMatch !== undefined
-        ? await store.setJSON(key, value, { onlyIfMatch: opts.onlyIfMatch })
+        ? await store.set(key, value, { onlyIfMatch: opts.onlyIfMatch })
         : opts?.onlyIfNew === true
-          ? await store.setJSON(key, value, { onlyIfNew: true })
-          : await store.setJSON(key, value);
-      return { modified: (r as { modified: boolean }).modified, etag: (r as { etag?: string }).etag };
+          ? await store.set(key, value, { onlyIfNew: true })
+          : await store.set(key, value);
+      return { modified: r.modified, etag: r.etag };
     },
   };
   const bytes: BlobsBytesBackend = {
