@@ -24,6 +24,8 @@ export interface ObservedItem {
   state: ItemState;
   uploadId: string | null;
   serverHash: string | null;
+  // S5: best SAM/mock label box, normalised 0-1. Absent until attached.
+  labelBox?: { x1: number; y1: number; x2: number; y2: number; confidence: number; uploadId: string; source: string } | null;
 }
 
 export interface Mission {

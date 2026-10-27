@@ -57,6 +57,8 @@ function viewNew(el: HTMLElement): void {
     <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
     <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
     <label>Deadline<input id="f-dl" type="text" value="2026-10-28T18:00:00Z" /></label>
+    <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
+    <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
   (document.getElementById("f-go") as HTMLButtonElement).onclick = async () => {
     const out = document.getElementById("f-out") as HTMLElement;
@@ -74,6 +76,28 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-cr") as HTMLButtonElement).onclick = () => void copyText(rl);
     } catch (e) {
       out.innerHTML = errBox(e);
+    }
+  };
+  (document.getElementById("f-draft") as HTMLButtonElement).onclick = async () => {
+    const fmsg = document.getElementById("f-dmsg") as HTMLElement;
+    try {
+      const desc = (document.getElementById("f-desc") as HTMLTextAreaElement).value;
+      const r = await fetch("/.netlify/functions/agent-draft", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ description: desc }),
+      });
+      const j = (await r.json()) as { draft?: { siteLabel: string; expectedCodes: string[]; deadline: string }; error?: string };
+      if (!r.ok) throw new Error(String(j.error ?? r.status));
+      const d = j.draft as { siteLabel: string; expectedCodes: string[]; deadline: string };
+      (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel;
+      for (let i = 0; i < 3; i++) {
+        (document.getElementById(`f-c${i + 1}`) as HTMLInputElement).value = d.expectedCodes[i] ?? "";
+      }
+      (document.getElementById("f-dl") as HTMLInputElement).value = d.deadline;
+      fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, then Create mission.</p>`;
+    } catch (e) {
+      fmsg.innerHTML = errBox(e);
     }
   };
 }
@@ -168,7 +192,10 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     mission: {
       state: string;
       expected: Array<{ itemId: string; expectedLabel: string }>;
-      observed: Record<string, { observedLabel: string | null; readability: string; state: string; uploadId: string | null }>;
+      observed: Record<string, {
+        observedLabel: string | null; readability: string; state: string; uploadId: string | null;
+        labelBox?: { x1: number; y1: number; x2: number; y2: number; confidence: number } | null;
+      }>;
     };
   };
   const m = s.mission;
@@ -193,7 +220,10 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         const blob = await evidenceBlob(missionId, o.uploadId, token);
         const u = URL.createObjectURL(blob);
         revoked.push(u);
-        slot.innerHTML = `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
+        const b = o.labelBox ?? null;
+        slot.innerHTML = b !== null
+          ? `<div style="position:relative"><img src="${u}" alt="evidence ${esc(e.itemId)}" style="width:100%" /><div style="position:absolute;left:${b.x1 * 100}%;top:${b.y1 * 100}%;width:${Math.max(0, b.x2 - b.x1) * 100}%;height:${Math.max(0, b.y2 - b.y1) * 100}%;border:3px solid #0a0;box-sizing:border-box"><span style="background:#0a0;color:#fff;font-size:.8rem">AI-located label</span></div></div>`
+          : `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
       } catch {
         slot.innerHTML = `<p class="err">Photo unavailable.</p>`;
       }

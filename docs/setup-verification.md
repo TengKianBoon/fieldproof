@@ -156,3 +156,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 - Tests: full worker->reviewer->export flow across ~20 separate endpoint calls sharing only mocked Blobs; fake-Spark CAS-conflict run proves exactly one fetch; production fail-closed. Found and fixed a real bug: scope did not await async handlers (flush raced the handler).
 - Docs/polish: docs/deploy-env.md (names only, no secrets); index.html Loading text + log hidden unless #debug; .netlify/ ignored (5X44).
 - Evidence: tsc clean, 95/95 tests (31 suites), offline vite build OK. No installs/network/API/deploy/keys. Known limit: same-process concurrent requests share scope singletons (sequential only); named for 5ofX follow-up.
+
+## Addendum 2026-10-28 — S5 SAM boxes + agent drafts (5X49, one commit)
+- SAM 3.1 boxes-only parse (best-c, normalised), flat 250 reserve/settle, one call outside retries + idempotent attach; mock path gets the fixed box; reviewer overlay + export carry it. Agent draft endpoint (strict tool, server validation, creates nothing). Evidence: tsc clean, 101/101, offline build OK. Deploy limit (reviewed): deploy-env is names-only; S3 stays draft-preview, never --prod.

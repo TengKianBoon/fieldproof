@@ -4,6 +4,7 @@
 // server-side reader adapter, and stores uploadId + serverHash on the item.
 import { blobsEndpoint, ctx, json, needToken, uploadBytes } from "../lib/_ctx.mts";
 import { captureSparkHandler } from "../lib/capture-spark.mts";
+import { attachBox, MOCK_BOX } from "../../shared/samBoxes.ts";
 import { readerMode } from "../../shared/sparkReader.ts";
 import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 
@@ -42,5 +43,8 @@ async function mockCapture(req: Request): Promise<Response> {
   });
   if (!r.ok) return json(400, { error: r.error });
   const m = r.value as { observed: Record<string, { state: string }> };
-  return json(200, { missionId, itemId, state: m.observed[itemId].state });
+  const state = m.observed[itemId].state;
+  // READER=mock: attach the fixed stand-in box (never a real locate).
+  attachBox(ctx().missions, missionId, itemId, uploadId, MOCK_BOX, "mock");
+  return json(200, { missionId, itemId, state });
 }

@@ -192,21 +192,29 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
       }
       return origSet(k, v, o);
     }) as MockBlobsKVBackend["setJSON"];
-    let fetches = 0;
+    let sparkCalls = 0;
+    let samCalls = 0;
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      fetches += 1;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { model?: string };
+      if (body.model === "sam-3.1") {
+        samCalls += 1;
+        return new Response(JSON.stringify({ status: "completed", id: "sam_1", output: [] }));
+      }
+      sparkCalls += 1;
       return new Response(JSON.stringify(completedSparkBody()));
     }) as unknown as typeof fetch;
     try {
       const first = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "b2", uploadId: uid }));
       assert.equal(first.status, 200);
       assert.equal(first.body.state, "matched");
-      assert.equal(fetches, 1);
+      assert.equal(sparkCalls, 1);
+      assert.equal(samCalls, 1);
       // A full replay settles nothing twice and never refetches.
       const replay = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "b2", uploadId: uid }));
       assert.equal(replay.body.error, "already_handled");
-      assert.equal(fetches, 1);
+      assert.equal(sparkCalls, 1);
+      assert.equal(samCalls, 1);
     } finally {
       globalThis.fetch = realFetch;
     }
