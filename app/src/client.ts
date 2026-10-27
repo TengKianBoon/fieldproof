@@ -7,10 +7,10 @@ export const PHOTO_MAX_SIDE = 1600;
 
 export type FetchFn = typeof fetch;
 
-async function post(name: string, body: unknown, fetchFn: FetchFn = fetch): Promise<Record<string, unknown>> {
+async function post(name: string, body: unknown, fetchFn: FetchFn = fetch, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
   const r = await fetchFn(`${BASE}/${name}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
   const j = (await r.json()) as Record<string, unknown>;
@@ -138,12 +138,12 @@ export async function evidenceBlob(missionId: string, uploadId: string, token: s
 }
 
 export const calls = {
-  createMission: (siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn) =>
+  createMission: (siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn, headers?: Record<string, string>) =>
     post("mission-create", {
       siteLabel,
       expectedItems: labels.map((expectedLabel, i) => ({ itemId: `box${i + 1}`, expectedLabel })),
       deadline,
-    }, fetchFn),
+    }, fetchFn, headers),
   consent: (missionId: string, token: string, workerId: string, fetchFn?: FetchFn) =>
     post("consent-accept", { missionId, token, workerId, consentVersion: "v1" }, fetchFn),
   capture: (missionId: string, token: string, itemId: string, uploadId: string, fetchFn?: FetchFn) =>

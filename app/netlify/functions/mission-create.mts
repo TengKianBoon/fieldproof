@@ -2,13 +2,13 @@
 // Returns scoped links. Requester identity: dev-only locally (see identity.ts).
 import { blobsScope, ctx, json, secret } from "../lib/_ctx.mts";
 import { mintLink } from "../../shared/links.ts";
-import { devIdentity } from "../../shared/identity.ts";
+import { requesterIdentity } from "../../shared/identity.ts";
 import type { ExpectedItem } from "../../shared/types.ts";
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "method" });
-  const id = devIdentity(process.env.FIELDPROOF_ENV, "requester-dev");
-  if (!id.ok) return json(403, { error: id.error });
+  const id = requesterIdentity(process.env, req.headers.get("x-requester-code"));
+  if (!id.ok) return json(id.error === "requester_code_unset" ? 503 : 403, { error: id.error });
   const body = (await req.json()) as { siteLabel?: string; expectedItems?: ExpectedItem[]; deadline?: string };
   if (typeof body.siteLabel !== "string" || !Array.isArray(body.expectedItems) || typeof body.deadline !== "string") {
     return json(400, { error: "bad_input" });

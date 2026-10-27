@@ -5,14 +5,14 @@
 // confirmation and editing, then the existing mission-create runs. Nothing
 // is created here — verified by test, not by promise.
 import { blobsScope, ctx, json } from "../lib/_ctx.mts";
-import { devIdentity } from "../../shared/identity.ts";
+import { requesterIdentity } from "../../shared/identity.ts";
 import { agentDraft, AGENT_DESC_LIMIT } from "../../shared/agentDraft.ts";
 import { sha256Hex } from "../../shared/hash.ts";
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "method" });
-  const id = devIdentity(process.env.FIELDPROOF_ENV, "requester-dev");
-  if (!id.ok) return json(403, { error: id.error });
+  const id = requesterIdentity(process.env, req.headers.get("x-requester-code"));
+  if (!id.ok) return json(id.error === "requester_code_unset" ? 503 : 403, { error: id.error });
   const body = (await req.json()) as Record<string, unknown>;
   const description = body.description;
   if (typeof description !== "string" || description.trim() === "" || description.length > AGENT_DESC_LIMIT) {

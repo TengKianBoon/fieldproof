@@ -11,6 +11,7 @@ S2d approval.
 | READER | Label-reading path. `spark` calls the model once per capture (reserve-max/settle-once); `mock` keeps the PNG stand-in. | `spark` |
 | META_API_KEY | Model key, server-side only. Fresh key per T6 rotation; the old key is deleted after S3. | New key in Netlify UI only |
 | FIELDPROOF_SECRET | Signs mission links (requester/worker/reviewer). | Random value in Netlify UI only |
+| REQUESTER_CODE | Access code for mission-create and agent-draft in production (header `x-requester-code`, constant-time check). | Secret in Netlify UI only; TKB types it once on the #/new page |
 | LEDGER_CEILING_USD | Model-spend ceiling per UTC day. Missing or invalid fails closed (US$2 demo default only in non-production code). | `2` |
 | FIELDPROOF_DATA_DIR | Local file-store directory. Dev/test only; never set in production (ephemeral disk, per-instance memory loss). | Unset in production |
 
@@ -22,3 +23,6 @@ Notes:
   reach a public repo.
 - S3 deploys a draft preview only, inside the D18 credit guard; never
   `--prod` from this flow.
+- Deployment limitation (5X46, reviewed): Netlify serves one request per
+  instance — the per-request transact design assumes no shared in-process
+  state between requests.

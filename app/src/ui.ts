@@ -50,6 +50,20 @@ async function render(): Promise<void> {
   }
 }
 
+function accessCode(): string {
+  return (document.getElementById("f-code") as HTMLInputElement).value;
+}
+
+function codeHeaders(): Record<string, string> {
+  const v = accessCode();
+  try {
+    sessionStorage.setItem("fp-code", v);
+  } catch {
+    // Private mode: the code simply does not persist.
+  }
+  return v === "" ? {} : { "x-requester-code": v };
+}
+
 function viewNew(el: HTMLElement): void {
   el.innerHTML = `<h1>New collection</h1>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
@@ -57,16 +71,22 @@ function viewNew(el: HTMLElement): void {
     <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
     <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
     <label>Deadline<input id="f-dl" type="text" value="2026-10-28T18:00:00Z" /></label>
+    <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
     <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
+  try {
+    (document.getElementById("f-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+  } catch {
+    // Private mode: start blank.
+  }
   (document.getElementById("f-go") as HTMLButtonElement).onclick = async () => {
     const out = document.getElementById("f-out") as HTMLElement;
     try {
       const site = (document.getElementById("f-site") as HTMLInputElement).value;
       const codes = ["f-c1", "f-c2", "f-c3"].map((id) => (document.getElementById(id) as HTMLInputElement).value);
       const dl = (document.getElementById("f-dl") as HTMLInputElement).value;
-      const c = await calls.createMission(site, codes, dl) as { missionId: string; workerToken: string; reviewToken: string };
+      const c = await calls.createMission(site, codes, dl, undefined, codeHeaders()) as { missionId: string; workerToken: string; reviewToken: string };
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
       out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(c.missionId)} open.</p>
@@ -75,7 +95,8 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-cw") as HTMLButtonElement).onclick = () => void copyText(wl);
       (document.getElementById("f-cr") as HTMLButtonElement).onclick = () => void copyText(rl);
     } catch (e) {
-      out.innerHTML = errBox(e);
+      const m = e instanceof Error ? e.message : String(e);
+      out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? "Wrong access code" : m)}</p>`;
     }
   };
   (document.getElementById("f-draft") as HTMLButtonElement).onclick = async () => {
@@ -84,11 +105,14 @@ function viewNew(el: HTMLElement): void {
       const desc = (document.getElementById("f-desc") as HTMLTextAreaElement).value;
       const r = await fetch("/.netlify/functions/agent-draft", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...codeHeaders() },
         body: JSON.stringify({ description: desc }),
       });
       const j = (await r.json()) as { draft?: { siteLabel: string; expectedCodes: string[]; deadline: string }; error?: string };
-      if (!r.ok) throw new Error(String(j.error ?? r.status));
+      if (!r.ok) {
+        const code = String(j.error ?? r.status);
+        throw new Error(code.includes("requester_code_denied") ? "Wrong access code" : code);
+      }
       const d = j.draft as { siteLabel: string; expectedCodes: string[]; deadline: string };
       (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel;
       for (let i = 0; i < 3; i++) {

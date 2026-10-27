@@ -159,3 +159,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — S5 SAM boxes + agent drafts (5X49, one commit)
 - SAM 3.1 boxes-only parse (best-c, normalised), flat 250 reserve/settle, one call outside retries + idempotent attach; mock path gets the fixed box; reviewer overlay + export carry it. Agent draft endpoint (strict tool, server validation, creates nothing). Evidence: tsc clean, 101/101, offline build OK. Deploy limit (reviewed): deploy-env is names-only; S3 stays draft-preview, never --prod.
+
+## Addendum 2026-10-28 — S6 requester access code (5X52, one commit)
+- requesterIdentity (REQUESTER_CODE, constant-time header check; 503 unset, 403 wrong) gates mission-create + agent-draft; #/new sends it from sessionStorage. Evidence: tsc clean, 104/104, offline build OK.
