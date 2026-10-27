@@ -63,7 +63,7 @@ describe("concurrency (B4)", () => {
     const store = new MemoryStore();
     const l = new Ledger(store, 100);
     assert.equal(l.reserve("w", "m", "k", "model", 6).ok, true);
-    const sk = "ledger:m:w:k";
+    const sk = `ledger:${new Date().toISOString().slice(0, 10)}:m:w:k`;
     const staleRaw = store.get(sk) as string;
     assert.equal(l.settle("w", "m", "k", 4).ok, true); // rival write moves version
     const stale = JSON.parse(staleRaw) as { version: number };

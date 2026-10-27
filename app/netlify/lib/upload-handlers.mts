@@ -53,7 +53,7 @@ export async function initHandler(req: Request): Promise<Response> {
   if (typeof missionId !== "string") return json(400, { error: "bad_input" });
   const t = needToken(body, missionId, "worker");
   if (!t.ok) return json(403, { error: t.error });
-  const { missions, uploads, ledger } = ctx();
+  const { missions, uploads } = ctx();
   const manifest = body.manifest as Record<string, unknown> | undefined;
   const idem = body.idempotencyKey;
   if (manifest === undefined || typeof idem !== "string") return json(400, { error: "bad_input" });
@@ -74,10 +74,8 @@ export async function initHandler(req: Request): Promise<Response> {
   }
   const bytesTotal = manifest.bytesTotal;
   if (typeof bytesTotal !== "number") return json(400, { error: "bad_input" });
-  // Authorise before enqueueing: reserve byte-charge first (1 millicent per MiB, demo rate).
-  const charge = Math.max(1, Math.ceil(bytesTotal / (1024 * 1024)));
-  const res = ledger.reserve("worker", missionId, `up:${String(idem)}`, "upload", charge);
-  if (!res.ok) return json(402, { error: res.error });
+  // B10: no fake upload-money charges. Uploads are evidence transport, not
+  // billable usage; only model calls reserve/settle on the ledger.
   const r = uploads.init(
     {
       missionId,
@@ -91,7 +89,6 @@ export async function initHandler(req: Request): Promise<Response> {
     missionUsed(missionId),
   );
   if (!r.ok) {
-    ledger.release("worker", missionId, `up:${String(idem)}`);
     return json(400, { error: r.error });
   }
   const uploadId = (r.value as { uploadId: string }).uploadId;
@@ -138,7 +135,7 @@ export async function completeHandler(req: Request): Promise<Response> {
   if (!t.ok) return json(403, { error: t.error });
   const cap = capturing(missionId);
   if (!cap.ok) return json(400, { error: cap.error });
-  const { uploads, ledger } = ctx();
+  const { uploads } = ctx();
   if (typeof body.uploadId !== "string") return json(400, { error: "bad_input" });
   const uploadId = String(body.uploadId);
   const own = ownUpload(uploadId, missionId, body.itemId);
@@ -146,7 +143,5 @@ export async function completeHandler(req: Request): Promise<Response> {
   const r = uploads.complete(uploadId);
   if (!r.ok) return json(400, { error: r.error });
   addUsed(missionId, storedBytesTotal(uploadId));
-  const idem = typeof body.idempotencyKey === "string" ? body.idempotencyKey : uploadId;
-  ledger.settle("worker", missionId, `up:${idem}`, 1);
   return json(200, r.value);
 }

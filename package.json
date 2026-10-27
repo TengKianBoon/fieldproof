@@ -1,0 +1,8 @@
+{
+  "name": "fieldproof-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"app/tests/**/*.test.ts\""
+  }
+}

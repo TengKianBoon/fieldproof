@@ -6,7 +6,7 @@ import { MemoryBlobStore } from "../shared/blobs.ts";
 import { sha256Hex } from "../shared/hash.ts";
 import handlerCreate from "../netlify/functions/mission-create.mts";
 import handlerConsent from "../netlify/functions/consent-accept.mts";
-import { initHandler, chunkHandler, completeHandler } from "../netlify/functions/upload-handlers.mts";
+import { initHandler, chunkHandler, completeHandler } from "../netlify/lib/upload-handlers.mts";
 
 process.env.FIELDPROOF_DATA_DIR = ":memory:";
 

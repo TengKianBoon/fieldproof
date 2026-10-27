@@ -2,7 +2,7 @@
 // observedLabel/readable is rejected outright. The server validates the upload
 // record (mission/item/completion/hash), reads evidence through the
 // server-side reader adapter, and stores uploadId + serverHash on the item.
-import { ctx, json, needToken, uploadBytes } from "./_ctx.mts";
+import { ctx, json, needToken, uploadBytes } from "../lib/_ctx.mts";
 import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 
 export default async function handler(req: Request): Promise<Response> {

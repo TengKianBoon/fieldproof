@@ -6,10 +6,10 @@ import handlerConsent from "../netlify/functions/consent-accept.mts";
 import handlerCloseup from "../netlify/functions/closeup-request.mts";
 import handlerCapture from "../netlify/functions/capture-submit.mts";
 import handlerReview from "../netlify/functions/review-decide.mts";
-import { toReviewHandler, markInconclusiveHandler, finishReviewHandler } from "../netlify/functions/review-flow.mts";
-import { exportHandler, stateHandler } from "../netlify/functions/export-state.mts";
-import { initHandler, chunkHandler, completeHandler } from "../netlify/functions/upload-handlers.mts";
-import { revokeNonce } from "../netlify/functions/_ctx.mts";
+import { toReviewHandler, markInconclusiveHandler, finishReviewHandler } from "../netlify/lib/review-flow.mts";
+import { exportHandler, stateHandler } from "../netlify/lib/export-state.mts";
+import { initHandler, chunkHandler, completeHandler } from "../netlify/lib/upload-handlers.mts";
+import { revokeNonce } from "../netlify/lib/_ctx.mts";
 import { MockPngReader } from "../shared/labels.ts";
 import { sha256Hex } from "../shared/hash.ts";
 

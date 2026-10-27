@@ -1,6 +1,6 @@
 // mission-create (requester): site label + three expected lot items + deadline.
 // Returns scoped links. Requester identity: dev-only locally (see identity.ts).
-import { ctx, json, secret } from "./_ctx.mts";
+import { ctx, json, secret } from "../lib/_ctx.mts";
 import { mintLink } from "../../shared/links.ts";
 import { devIdentity } from "../../shared/identity.ts";
 import type { ExpectedItem } from "../../shared/types.ts";

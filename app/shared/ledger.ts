@@ -19,14 +19,23 @@ export interface LedgerEntry {
 export class Ledger {
   private store: KVStore;
   private ceilingMilli: number;
-  constructor(store: KVStore, ceilingMilli: number) {
+  private nowMs: () => number;
+  constructor(store: KVStore, ceilingMilli: number, nowMs: () => number = Date.now) {
     this.store = store;
     this.ceilingMilli = ceilingMilli;
+    this.nowMs = nowMs;
+  }
+
+  // UTC day key: accounting is separated per day (B10). Same idempotency key
+  // on another day is a separate entry with a fresh ceiling.
+  private day(): string {
+    return new Date(this.nowMs()).toISOString().slice(0, 10);
   }
 
   spent(): number {
     let total = 0;
-    for (const k of this.store.keys("ledger:")) {
+    const prefix = `ledger:${this.day()}:`;
+    for (const k of this.store.keys(prefix)) {
       const e = JSON.parse(this.store.get(k) as string) as LedgerEntry;
       total += e.status === "settled" ? e.settled : e.reserved;
     }
@@ -38,7 +47,7 @@ export class Ledger {
   }
 
   private raw(caller: string, missionId: string, key: string): { sk: string; prior: string | null } {
-    const sk = `ledger:${missionId}:${caller}:${key}`;
+    const sk = `ledger:${this.day()}:${missionId}:${caller}:${key}`;
     return { sk, prior: this.store.get(sk) };
   }
 

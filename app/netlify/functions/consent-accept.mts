@@ -1,6 +1,6 @@
 // consent-accept (worker): scoped invitation + versioned consent required
 // before any capture. Stale versions rejected.
-import { ctx, json, needToken } from "./_ctx.mts";
+import { ctx, json, needToken } from "../lib/_ctx.mts";
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "method" });
