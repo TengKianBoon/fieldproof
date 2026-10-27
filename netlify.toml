@@ -1,7 +1,9 @@
+# Root-based config (S6-fix): no `base`, so every path below resolves from
+# the repo root (8ofX). Vite emits to app/dist; endpoints live in
+# app/netlify/functions with node_modules resolvable from app/.
 [build]
-  base = "app"
-  command = "npm run build"
-  publish = "dist"
+  command = "npm --prefix app run build"
+  publish = "app/dist"
 
 [functions]
-  directory = "netlify/functions"
+  directory = "app/netlify/functions"

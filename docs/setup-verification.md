@@ -162,3 +162,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — S6 requester access code (5X52, one commit)
 - requesterIdentity (REQUESTER_CODE, constant-time header check; 503 unset, 403 wrong) gates mission-create + agent-draft; #/new sends it from sessionStorage. Evidence: tsc clean, 104/104, offline build OK.
+
+## Addendum 2026-10-28 — Deploy path fix (one commit)
+- Root netlify.toml drops `base`, pins publish `app/dist` + functions `app/netlify/functions`, build `npm --prefix app run build`. Verified: exact command builds offline (app/dist + assets); 15 endpoints; only runtime dep @netlify/blobs resolves from app.
