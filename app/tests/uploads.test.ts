@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { Uploads, MAX_CHUNK, MISSION_CAP } from "../shared/uploads.ts";
 import { MemoryStore } from "../shared/store.ts";
 import { sha256Hex } from "../shared/hash.ts";
@@ -47,6 +48,24 @@ describe("chunked uploads", () => {
     assert.equal(done.ok, true);
     assert.equal(done.value?.serverHash, sha256Hex(all));
     assert.equal(done.value?.clientHash, "client-says"); // recorded separately, never trusted
+  });
+  it("splits the 12 MiB + 1 byte dev fixture into exactly 2 chunks", () => {
+    const all = readFileSync("app/.local-fixtures/dev/big-12mb-plus-1.bin");
+    assert.equal(all.length, 12 * 1024 * 1024 + 1);
+    const u = setup();
+    const init = u.init(
+      { uploadId: "big", missionId: "m", itemId: "i", attemptId: "a", bytesTotal: all.length, chunkSize: MAX_CHUNK, clientHash: "x" },
+      1000, 0,
+    );
+    assert.equal(init.ok, true);
+    assert.equal(init.value?.chunkCount, 2);
+    const p0 = all.subarray(0, MAX_CHUNK);
+    const p1 = all.subarray(MAX_CHUNK);
+    assert.equal(u.chunk("big", 0, p0, sha256Hex(p0)).ok, true);
+    assert.equal(u.chunk("big", 1, p1, sha256Hex(p1)).ok, true);
+    const done = u.complete("big");
+    assert.equal(done.ok, true);
+    assert.equal(done.value?.serverHash, sha256Hex(all));
   });
   it("rejects tampered chunks and incomplete completion", () => {
     const u = setup();
