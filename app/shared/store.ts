@@ -1,8 +1,11 @@
-// Storage interface. Local adapters below; transactional Postgres + private
-// Blobs plug in later behind this same interface. No DB provisioned in batch 1.
+// Storage interface (B4: compare-and-set). Local adapters below;
+// transactional Postgres plugs in later behind this same interface.
+// cas() is the only atomic write: true iff the current raw value still
+// equals expected (null = must be absent).
 export interface KVStore {
   get(key: string): string | null;
   set(key: string, value: string): void;
+  cas(key: string, expected: string | null, value: string): boolean;
   del(key: string): void;
   keys(prefix: string): string[];
 }
@@ -16,6 +19,12 @@ export class MemoryStore implements KVStore {
   set(key: string, value: string): void {
     this.m.set(key, value);
   }
+  cas(key: string, expected: string | null, value: string): boolean {
+    const cur = this.m.get(key) ?? null;
+    if (cur !== expected) return false;
+    this.m.set(key, value);
+    return true;
+  }
   del(key: string): void {
     this.m.delete(key);
   }
@@ -26,9 +35,9 @@ export class MemoryStore implements KVStore {
   }
 }
 
-// File-backed JSON store for local persistence across function invocations.
-// Isolated namespaces: each instance is rooted at its own directory
-// (preview vs production later). Writes are whole-file atomic via rename.
+// File-backed JSON store. Writes are whole-file atomic via tmp+rename; cas()
+// re-reads before writing (single-host correctness; Postgres transactions
+// replace this across hosts later).
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
@@ -51,6 +60,15 @@ export class FileStore implements KVStore {
     const tmp = p + ".tmp";
     writeFileSync(tmp, JSON.stringify(value));
     renameSync(tmp, p);
+  }
+  cas(key: string, expected: string | null, value: string): boolean {
+    const p = this.path(key);
+    const cur = existsSync(p) ? (JSON.parse(readFileSync(p, "utf8") as string) as string) : null;
+    if (cur !== expected) return false;
+    const tmp = p + ".tmp";
+    writeFileSync(tmp, JSON.stringify(value));
+    renameSync(tmp, p);
+    return true;
   }
   del(key: string): void {
     const p = this.path(key);

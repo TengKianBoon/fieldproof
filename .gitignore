@@ -35,3 +35,4 @@ app/dist/
 app/.local-data/
 app/.local-fixtures/
 .env.local
+!.env.example

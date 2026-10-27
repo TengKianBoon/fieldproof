@@ -1,5 +1,6 @@
 // Browser API client (capture-worker-owned path; lead scaffolded minimal).
 // Tokens travel in POST bodies / x-mission-token header, never query strings.
+// B1: the client NEVER sends labels — it uploads bytes, then submits uploadIds.
 const BASE = "/.netlify/functions";
 
 async function post(name: string, body: unknown): Promise<Record<string, unknown>> {
@@ -29,10 +30,8 @@ export async function closeup(missionId: string, token: string, itemId: string) 
   return post("closeup-request", { missionId, token, itemId });
 }
 
-export async function submitCapture(
-  missionId: string, token: string, itemId: string, observedLabel: string | null, readable: boolean,
-) {
-  return post("capture-submit", { missionId, token, itemId, observedLabel, readable });
+export async function submitCapture(missionId: string, token: string, itemId: string, uploadId: string) {
+  return post("capture-submit", { missionId, token, itemId, uploadId });
 }
 
 export async function decide(missionId: string, token: string, itemId: string, decision: string) {

@@ -22,10 +22,13 @@ export interface ObservedItem {
   readability: Readability;
   closeupsUsed: number;
   state: ItemState;
+  uploadId: string | null;
+  serverHash: string | null;
 }
 
 export interface Mission {
   missionId: string;
+  version: number;
   siteLabel: string;
   expected: ExpectedItem[];
   observed: Record<string, ObservedItem>;

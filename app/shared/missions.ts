@@ -1,12 +1,22 @@
-// Mission aggregate: create, consent, capture, close-up, decide, export.
-// All transitions validated; counters cannot reset; close-ups capped at 2/item.
-import { ok, fail, type Result, type Mission, type ExpectedItem } from "./types.ts";
+// Mission aggregate (B4: versioned CAS writes, no get-modify-set races).
+// Every mutator loads the record, applies one transition, and commits with
+// compare-and-set on the exact raw bytes it read. A lost update surfaces as
+// `conflict`: callers reload and re-apply, never silently overwrite.
+// Attempt limits (closeupsUsed) persist in the same versioned record.
+import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
 import type { KVStore } from "./store.ts";
 
 export const MAX_CLOSEUPS = 2;
 export const CONSENT_VERSION = "v1";
+
+export interface ServerEvidence {
+  uploadId: string;
+  serverHash: string;
+  label: string | null;
+  readability: Readability;
+}
 
 let seq = 0;
 export function newId(prefix: string): string {
@@ -23,12 +33,26 @@ export class Missions {
   private key(id: string): string {
     return `mission:${id}`;
   }
+  private raw(id: string): string | null {
+    return this.store.get(this.key(id));
+  }
   load(id: string): Mission | null {
-    const v = this.store.get(this.key(id));
+    const v = this.raw(id);
     return v === null ? null : (JSON.parse(v) as Mission);
   }
-  private save(m: Mission): void {
-    this.store.set(this.key(m.missionId), JSON.stringify(m));
+  // Versioned write of a caller-held copy. Public for cross-instance
+  // conflict tests; production mutators below use it after transitions.
+  saveExpecting(m: Mission, expectedVersion: number): boolean {
+    const prior = this.raw(m.missionId);
+    if (prior === null) return false;
+    const cur = JSON.parse(prior) as Mission;
+    if (cur.version !== expectedVersion) return false;
+    m.version = expectedVersion + 1;
+    return this.store.cas(this.key(m.missionId), prior, JSON.stringify(m));
+  }
+  private commit(m: Mission, expectedVersion: number): Result<Mission> {
+    if (!this.saveExpecting(m, expectedVersion)) return fail("conflict");
+    return ok(m);
   }
 
   create(siteLabel: string, expected: ExpectedItem[], deadline: string): Result<Mission> {
@@ -36,6 +60,7 @@ export class Missions {
     const missionId = newId("m");
     const m: Mission = {
       missionId,
+      version: 0,
       siteLabel,
       expected,
       observed: {},
@@ -47,42 +72,54 @@ export class Missions {
       createdAt: new Date().toISOString(),
     };
     for (const e of expected) {
-      m.observed[e.itemId] = { itemId: e.itemId, observedLabel: null, readability: "unreadable", closeupsUsed: 0, state: "expected" };
+      m.observed[e.itemId] = {
+        itemId: e.itemId, observedLabel: null, readability: "unreadable",
+        closeupsUsed: 0, state: "expected", uploadId: null, serverHash: null,
+      };
     }
     transitionMission("draft", "open");
     m.state = "open";
-    this.save(m);
+    if (!this.store.cas(this.key(missionId), null, JSON.stringify(m))) return fail("exists");
     return ok(m);
   }
 
+  private loaded(missionId: string): { m: Mission; v: number } | null {
+    const prior = this.raw(missionId);
+    if (prior === null) return null;
+    const m = JSON.parse(prior) as Mission;
+    return { m, v: m.version };
+  }
+
   acceptConsent(missionId: string, workerId: string, version: string): Result<Mission> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
     if (version !== CONSENT_VERSION) return fail("stale_consent");
+    const { m, v } = l;
     transitionMission(m.state, "consented");
     m.state = "consented";
     m.workerId = workerId;
     m.consentVersion = version;
     transitionMission("consented", "capturing");
     m.state = "capturing";
-    this.save(m);
-    return ok(m);
+    return this.commit(m, v);
   }
 
-  submitCapture(
-    missionId: string, itemId: string, observedLabel: string | null, readable: boolean,
-  ): Result<Mission> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+  submitCapture(missionId: string, itemId: string, ev: ServerEvidence): Result<Mission> {
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "expected" && o.state !== "closeup_requested" && o.state !== "unclear") {
       return fail("bad_item_state");
     }
+    const readable = ev.readability === "clear" || ev.readability === "blurred";
     transitionItem(o.state, readable ? "observed_clear" : "unclear");
     o.state = readable ? "observed_clear" : "unclear";
-    o.observedLabel = readable ? observedLabel : null;
-    o.readability = readable ? "clear" : "unreadable";
+    o.observedLabel = readable ? ev.label : null;
+    o.readability = ev.readability;
+    o.uploadId = ev.uploadId;
+    o.serverHash = ev.serverHash;
     if (readable) {
       const exp = m.expected.find((e) => e.itemId === itemId) as ExpectedItem;
       const c = compareLabels(exp.expectedLabel, o.observedLabel, true);
@@ -90,13 +127,13 @@ export class Missions {
       transitionItem("observed_clear", c.value === "matched" ? "matched" : "mismatched");
       o.state = c.value === "matched" ? "matched" : "mismatched";
     }
-    this.save(m);
-    return ok(m);
+    return this.commit(m, v);
   }
 
   requestCloseup(missionId: string, itemId: string): Result<{ closeupsUsed: number }> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "unclear") return fail("not_unclear");
@@ -104,26 +141,28 @@ export class Missions {
     transitionItem("unclear", "closeup_requested");
     o.state = "closeup_requested";
     o.closeupsUsed += 1;
-    this.save(m);
+    const c = this.commit(m, v);
+    if (!c.ok) return fail(c.error as string);
     return ok({ closeupsUsed: o.closeupsUsed });
   }
 
   // Unclear after both close-ups are spent -> inconclusive. Never a match.
   markInconclusive(missionId: string, itemId: string): Result<Mission> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "unclear" || o.closeupsUsed < MAX_CLOSEUPS) return fail("closeups_remain");
     transitionItem("unclear", "inconclusive");
     o.state = "inconclusive";
-    this.save(m);
-    return ok(m);
+    return this.commit(m, v);
   }
 
   decide(missionId: string, itemId: string, decision: string): Result<Mission> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
     if (o.state !== "mismatched") return fail("nothing_to_review");
@@ -133,17 +172,16 @@ export class Missions {
     transitionItem("mismatched", decision);
     o.state = decision;
     m.reviewerDecision[itemId] = decision;
-    this.save(m);
-    return ok(m);
+    return this.commit(m, v);
   }
 
   toReview(missionId: string): Result<Mission> {
-    const m = this.load(missionId);
-    if (m === null) return fail("unknown_mission");
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
     transitionMission(m.state, "in_review");
     m.state = "in_review";
-    this.save(m);
-    return ok(m);
+    return this.commit(m, v);
   }
 
   exportPack(missionId: string, maxBytes: number): Result<{ pack: string; bytes: number }> {
