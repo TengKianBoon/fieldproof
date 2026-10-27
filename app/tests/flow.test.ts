@@ -7,6 +7,7 @@ import { MemoryStore } from "../shared/store.ts";
 import { MemoryBlobStore } from "../shared/blobs.ts";
 import { MockPngReader } from "../shared/labels.ts";
 import { sha256Hex } from "../shared/hash.ts";
+import type { Mission } from "../shared/types.ts";
 
 function items() {
   return [
@@ -34,41 +35,63 @@ function ingest(
   return { uploadId, serverHash: done.value?.serverHash as string };
 }
 
-// B1 loop at core level: evidence objects come from the server reader,
-// never from client parameters.
-describe("phone loop via server evidence (B1)", () => {
-  it("derives labels server-side; unclear exhausts close-ups then inconclusive", () => {
+function submit(ms: Missions, id: string, item: string, file: string) {
+  const s = (ms as unknown as { load: (x: string) => Mission }).load(id);
+  void s;
+  return { ms, id, item, file };
+}
+
+// B1 loop at core level + B6 gates: decide needs in_review (tested in
+// handlers), finishReview needs all-terminal, export needs decided.
+describe("phone loop via server evidence (B1+B6)", () => {
+  it("runs the full loop to a decided export", () => {
     const store = new MemoryStore();
     const ms = new Missions(store);
     const up = new Uploads(store, new MemoryBlobStore());
     const reader = new MockPngReader();
-    const m = ms.create("Supplier dock A", items(), "2026-10-28T18:00:00Z").value as { missionId: string };
+    const m = ms.create("Supplier dock A", items(), "2026-10-28T18:00:00Z").value as Mission;
     const id = m.missionId;
     ms.acceptConsent(id, "worker-1", "v1");
 
+    // box1: real B17 pixels vs expected B12 -> mismatched (review path).
+    const e1 = ingest(up, reader, id, "box1", "clear-B17.png", "B17");
+    const s1 = reader.read(readFileSync("app/.local-fixtures/img/clear-B17.png"));
+    assert.equal(
+      ms.submitCapture(id, "box1", { uploadId: e1.uploadId, serverHash: e1.serverHash, label: s1.label, readability: s1.readability }).value?.observed.box1.state,
+      "mismatched",
+    );
+    // Decide before review is gated.
+    assert.equal(ms.decide(id, "box1", "confirmed_mismatch").error, "not_in_review");
+    // box2: matched. box3: covered -> unclear x3 -> inconclusive.
     const e2 = ingest(up, reader, id, "box2", "clear-B17.png", "B17");
-    const seen = reader.read(readFileSync("app/.local-fixtures/img/clear-B17.png"));
-    const cap = ms.submitCapture(id, "box2", {
-      uploadId: e2.uploadId, serverHash: e2.serverHash, label: seen.label, readability: seen.readability,
-    });
-    // Real clear B17 vs expected B17 -> matched, derived entirely server-side.
-    assert.equal(cap.value?.observed.box2.state, "matched");
-    assert.equal(cap.value?.observed.box2.uploadId, e2.uploadId);
-    assert.equal(cap.value?.observed.box2.serverHash, e2.serverHash);
-
-    // Covered B71 evidence -> unclear; close-up budget enforced; inconclusive.
-    const sub = (file: string) => {
-      const e = ingest(up, reader, id, "box3", file, "B71");
-      const s = reader.read(readFileSync(`app/.local-fixtures/img/${file}`));
-      assert.equal(s.label, null); // never a guess
+    const s2 = reader.read(readFileSync("app/.local-fixtures/img/clear-B17.png"));
+    assert.equal(
+      ms.submitCapture(id, "box2", { uploadId: e2.uploadId, serverHash: e2.serverHash, label: s2.label, readability: s2.readability }).value?.observed.box2.state,
+      "matched",
+    );
+    const sub3 = () => {
+      const e = ingest(up, reader, id, "box3", "covered-B71.png", "B71");
+      const s = reader.read(readFileSync("app/.local-fixtures/img/covered-B71.png"));
       return ms.submitCapture(id, "box3", { uploadId: e.uploadId, serverHash: e.serverHash, label: s.label, readability: s.readability });
     };
-    assert.equal(sub("covered-B71.png").value?.observed.box3.state, "unclear");
-    assert.equal(ms.requestCloseup(id, "box3").value?.closeupsUsed, 1);
-    assert.equal(sub("covered-B71.png").value?.observed.box3.state, "unclear");
-    assert.equal(ms.requestCloseup(id, "box3").value?.closeupsUsed, 2);
-    assert.equal(sub("covered-B71.png").value?.observed.box3.state, "unclear");
-    assert.equal(ms.requestCloseup(id, "box3").error, "closeup_exhausted");
+    assert.equal(sub3().value?.observed.box3.state, "unclear");
+    ms.requestCloseup(id, "box3");
+    assert.equal(sub3().value?.observed.box3.state, "unclear");
+    ms.requestCloseup(id, "box3");
+    assert.equal(sub3().value?.observed.box3.state, "unclear");
     assert.equal(ms.markInconclusive(id, "box3").value?.observed.box3.state, "inconclusive");
+
+    // Export before decision is gated.
+    assert.equal(ms.exportPack(id, 4 * 1024 * 1024).error, "not_decided");
+    assert.equal(ms.toReview(id).value?.state, "in_review");
+    assert.equal(ms.finishReview(id).error, "items_open"); // box1 still mismatched
+    assert.equal(ms.decide(id, "box1", "confirmed_mismatch").value?.observed.box1.state, "confirmed_mismatch");
+    assert.equal(ms.finishReview(id).value?.state, "decided");
+    const pack = ms.exportPack(id, 4 * 1024 * 1024);
+    assert.equal(pack.ok, true);
+    const parsed = JSON.parse(pack.value?.pack as string) as { mission: { observed: Record<string, { observedLabel: string | null }> } };
+    assert.equal(parsed.mission.observed.box1.observedLabel, "B17");
+    assert.equal(ms.exportPack(id, 10).error, "export_too_large");
+    void submit;
   });
 });

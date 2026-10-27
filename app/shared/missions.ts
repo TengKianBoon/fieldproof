@@ -1,8 +1,8 @@
-// Mission aggregate (B4: versioned CAS writes, no get-modify-set races).
-// Every mutator loads the record, applies one transition, and commits with
-// compare-and-set on the exact raw bytes it read. A lost update surfaces as
-// `conflict`: callers reload and re-apply, never silently overwrite.
-// Attempt limits (closeupsUsed) persist in the same versioned record.
+// Mission aggregate (B4 CAS; B14/B7 routing; B6 review/export gates).
+// Comparison ONLY for clear readability with non-empty labels. Blurred keeps
+// its value but routes unclear. Null/empty routes unclear, never mismatched.
+// B6: human decide() requires in_review; finishReview() requires all items
+// terminal and moves decided; export callers enforce decided.
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
@@ -17,6 +17,8 @@ export interface ServerEvidence {
   label: string | null;
   readability: Readability;
 }
+
+const TERMINAL_ITEM = ["matched", "confirmed_match", "confirmed_mismatch", "inconclusive"];
 
 let seq = 0;
 export function newId(prefix: string): string {
@@ -40,8 +42,6 @@ export class Missions {
     const v = this.raw(id);
     return v === null ? null : (JSON.parse(v) as Mission);
   }
-  // Versioned write of a caller-held copy. Public for cross-instance
-  // conflict tests; production mutators below use it after transitions.
   saveExpecting(m: Mission, expectedVersion: number): boolean {
     const prior = this.raw(m.missionId);
     if (prior === null) return false;
@@ -113,14 +113,15 @@ export class Missions {
     if (o.state !== "expected" && o.state !== "closeup_requested" && o.state !== "unclear") {
       return fail("bad_item_state");
     }
-    const readable = ev.readability === "clear" || ev.readability === "blurred";
-    transitionItem(o.state, readable ? "observed_clear" : "unclear");
-    o.state = readable ? "observed_clear" : "unclear";
-    o.observedLabel = readable ? ev.label : null;
+    const hasLabel = ev.label !== null && ev.label.trim() !== "";
+    const comparable = ev.readability === "clear" && hasLabel;
+    transitionItem(o.state, comparable ? "observed_clear" : "unclear");
+    o.state = comparable ? "observed_clear" : "unclear";
+    o.observedLabel = ev.label;
     o.readability = ev.readability;
     o.uploadId = ev.uploadId;
     o.serverHash = ev.serverHash;
-    if (readable) {
+    if (comparable) {
       const exp = m.expected.find((e) => e.itemId === itemId) as ExpectedItem;
       const c = compareLabels(exp.expectedLabel, o.observedLabel, true);
       if (!c.ok) return fail(c.error as string);
@@ -146,7 +147,6 @@ export class Missions {
     return ok({ closeupsUsed: o.closeupsUsed });
   }
 
-  // Unclear after both close-ups are spent -> inconclusive. Never a match.
   markInconclusive(missionId: string, itemId: string): Result<Mission> {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
@@ -165,6 +165,7 @@ export class Missions {
     const { m, v } = l;
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
+    if (m.state !== "in_review") return fail("not_in_review");
     if (o.state !== "mismatched") return fail("nothing_to_review");
     if (decision !== "confirmed_match" && decision !== "confirmed_mismatch" && decision !== "inconclusive") {
       return fail("bad_decision");
@@ -184,9 +185,24 @@ export class Missions {
     return this.commit(m, v);
   }
 
+  // B6: all items terminal -> decided. Export callers require decided.
+  finishReview(missionId: string): Result<Mission> {
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
+    if (m.state !== "in_review") return fail("not_in_review");
+    for (const e of m.expected) {
+      if (!TERMINAL_ITEM.includes(m.observed[e.itemId].state)) return fail("items_open");
+    }
+    transitionMission("in_review", "decided");
+    m.state = "decided";
+    return this.commit(m, v);
+  }
+
   exportPack(missionId: string, maxBytes: number): Result<{ pack: string; bytes: number }> {
     const m = this.load(missionId);
     if (m === null) return fail("unknown_mission");
+    if (m.state !== "decided") return fail("not_decided");
     const pack = JSON.stringify({ mission: m, exportedAt: new Date().toISOString() });
     const bytes = Buffer.byteLength(pack, "utf8");
     if (bytes > maxBytes) return fail("export_too_large");
