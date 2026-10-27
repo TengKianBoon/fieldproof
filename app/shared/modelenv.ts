@@ -15,11 +15,14 @@ export function hasModelKey(env: Record<string, string | undefined>): boolean {
 // - KEY must start the line exactly (no leading spaces, no spaces around =);
 //   anything else is ignored, never erroring into a match.
 // - Values keep interior characters (including =); surrounding whitespace and
-//   a trailing CR are stripped. Keys never leave the caller's memory.
+//   a trailing CR are stripped; ONE surrounding pair of single or double
+//   quotes is stripped (S12). Keys never leave the caller's memory.
 export function parseEnvKey(text: string, name: string): string | null {
   for (const line of text.split("\n")) {
     if (!line.startsWith(`${name}=`)) continue;
-    const v = line.slice(name.length + 1).trim();
+    let v = line.slice(name.length + 1).trim();
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+    else if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) v = v.slice(1, -1);
     if (v === "") return null;
     return v;
   }

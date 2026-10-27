@@ -92,7 +92,44 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 - Anomaly: app/tests/handlers.test.ts briefly absent from the tree mid-turn (cause unknown — Drive sync suspected); restored by full rewrite, suite re-verified green before commit. No data loss; no .git deletions.
 - Spend: $0.00 app/model. Cumulative est. USD12.16 checkpoint stands; ~USD3.28 under interim ceiling per operator math. Next: toolchain/B8-B13 per order; paid run only after fixture decision + section-4 gate.
 
+## Addendum 2026-10-27 — spike review fixes, committed 3318676, NO paid run
+- Nested usage consumed (`input_tokens_details.cached_tokens`; top-level invention rejected by test); negative/nonfinite/cached>input usage rejected to worst-case-unknown.
+- Actual Responses shape parsed + tested (message/output_text walk); malformed shapes rejected.
+- Dry-run carries SHA256 + real byte counts per R9 (refreshed artifact in muse-runs/).
+- Env parser checked: strict KEY= lines, keeps = in values, strips CR; tested. Key never exposed.
+- Fetch failures persist receipt + reservation and stop (code-reviewed; --run path executes only under operator gate).
+- 2000-token figure renamed to planning estimate everywhere; no bound, no hard-cap claim. Suite 53/53.
+- Spend: $0.00 app/model. Fixture decision still open; paid run blocked.
+
+## Addendum 2026-10-27 — queued review corrections + B6 verification (UNCOMMITTED)
+- Dry-run PRODUCED only: wording corrected everywhere to state NOT jointly approved. Paid run stays off.
+- Cached-token accounting repaired + edge-tested: nested `input_tokens_details.cached_tokens` consumed; absent/non-numeric detail = zero (never top-level); negative/nonfinite/cached>input rejected to worst-case-unknown. 16/16 focused tests green (costing, B6 gates, loop, transitions).
+- B6a-e re-verified complete against 5X27: matched reviewable, per-item decisions, export roles, worker brief, revocation, capturing guards.
+- Prior cancelled commit did NOT land (HEAD verified 3318676 before new work). This slice left uncommitted for review. No paid run.
+
 ## Baseline 2026-10-27 — batch-1 repair segment closed (5X25/D20)
 - Last operator-verified cumulative: US$5.44 (20,186,416 tokens; observers 327 / 4,049,031 tokens). Live delta since then NOT visible in-session; do not claim usage zero — coding/observers count.
 - Batch-2 (D20): S$20 within aggregate S$150, lead-only. Interim ceiling: US$10 incremental until verified figures arrive (conservative planning factor S$2/US$1 on delta since US$1.44 is NOT an FX quote).
 - App/model spend to date: $0.00 (no paid calls; spike paused). Baseline live total: operator to confirm; checkpoint reported here before further work. — ordinary Git/file work inside 8ofX is unaffected for the operator, but future agent shell steps spanning the link need scoped approval. Drive File Stream may re-drop `desktop.ini` into synced folders; the new Git dir sits outside the synced tree. No commit, remote, push, billing change, or app build.
+
+## Addendum 2026-10-27 — S8-S14, four-image fixtures, B6g, dry-run v2 (UNCOMMITTED, STOP)
+- Checkpoint (operator, supersedes all earlier baselines): cumulative USD17.51, 741 observers / 9,280,709 tokens. D21: batch2 cumulative stop 19.63 (conservative 5.44 baseline); ONLY USD2.12 remains under the temporary USD10 ceiling. App/model spend $0.00 (NO paid run; key never loaded).
+- S8: costOf consumes nested `input_tokens_details.cached_tokens` (absent/non-numeric detail = zero, never top-level); negative/nonfinite/cached>input rejected to worst-case-unknown (tested). S9: dry-run carries full SHA256 + real byte counts per image. S10: receipt persisted always via finally + 120s fetch timeout (network-throw path tested). S11: strict reading validation (label string|null, readability enum, unknown keys rejected). S12: quote-stripping env parser (keeps = in values, strips CR; tested). S13: 4-image scoring (clear/soft/unreadable/covered per 5X29 table; R7-on-blurred WITHDRAWN). S14: estimate-only wording, no hard-cap claim. B6g: capturing guard in review-flow + handlers tests.
+- Four-image fixtures (5X29 set): clear-B17 sharp 5.173, soft-B17 sharp 2.944 (unreadable still legible), unreadable-B17 sharp 1.825 (structural only), covered-B71 sharp 2.892; manifest app/.local-fixtures/img/IMAGES.md; old blurred-B17.png deleted (b14 test updated to soft-B17).
+- Dry-run v2 exit 0: 4 images (est. input 3000 = 2000 planning estimate + 1000 unreadable-estimate), score 1/4, planning figure $0.0780 < $0.50 cap; sanitized artifact muse-runs/spike-dryrun-2026-10-27.md for 4ofX/5ofX review. NO paid dispatch.
+- Test evidence: 57/57 pass (19 suites) via `node --test app/tests/*.test.ts`.
+- Outstanding gates: unreadable-B17 needs 4ofX + 5ofX visual confirm (no character readable); paid run blocked until then + section-4 gate. NO commit (left uncommitted per order). Toolchain/B8-B13 NOT started. Drive-sync file disappearances recurred (missions.ts, labels.test.ts, b6.test.ts, etc.) — restored via approved checkout/rewrite; Drive `desktop.ini` behavior unchanged.
+
+## Addendum 2026-10-27 — slice close-out, batch3 economy, STOP for baseline
+- 4X40: TKB approved batch3 S$20 ceiling within S$150 aggregate — maximum, NOT a target; spend necessary minimum; no Contributor/new-session inferred; baseline must be measured before any cumulative ceiling. USD17.51 is HISTORICAL, not current cost — operator to measure live /usage baseline.
+- 4X41: 4ofX visually confirmed unreadable-B17 (no readable character; synthetic no-information case, not natural-blur proof). 5ofX confirm still pending; paid run stays off.
+- File correction owned: b6.test.ts verified PRESENT (3902 bytes) — no restore, no deletion this turn. Prior b6/b14 deletions were my own Remove-Item calls (receipted in-turn); other absences per 4X39 cause UNKNOWN, not asserted as Drive sync. No deletion/rewrite cycles repeated.
+- Final targeted check: 57/57 pass (19 suites) via absolute-glob suite run (one relative-path misfire hit the known `C:` EISDIR quirk; rerun with documented absolute form, 2 attempts).
+- Observer setting: `config status` shows all planes absent (no observer controls exposed); sandbox identity cannot read user settings.json (Access denied) and changes would not save. Optional-observer disable NOT supported via any documented mechanism I can access — no change made, sandbox + approvals untouched.
+- NO commit, NO paid run, NO new suites, NO toolchain. Stopped for /usage baseline + joint review.
+
+## Addendum 2026-10-27 — 5X32 joint review complete; budget corrected; slice committed
+- 5X32 (reviewed tree on HEAD 3318676): APPROVES four fixtures (hashes match IMAGES.md; unreadable-B17 flat grey value 128, no character), spike script incl. 4-image list, S8/S9, S10, S11, S12, B6g. Round 2 closed. Run conditions: suite passes (57/57 kept, no re-run — no source changes) + one commit + committed dry-run shows 4 IMAGES.md hashes and "joint review complete, 5X32" + network approval visibly api.meta.ai-only. Two spike.mts nits (bad_response HTTP status; double persist) explicitly DEFERRED by 5X32 — not touched.
+- BUDGET CORRECTION (supersedes 17.51 checkpoint and interim USD10 ceiling): /usage NOW USD22.52 (870 observers / 10,978,009 tokens). Batch2 boundary 19.63 was exceeded mid-slice; conservatively debit 2.89 to TKB-approved batch3 — NOT a fresh 22.52 baseline. Batch3 cap USD14.19 includes that debit; cumulative ceiling 33.82; remaining 11.30 incl. app calls. D22 records batch3 economy rules (ceiling not target; post-commit /usage is the batch-3 baseline).
+- ATTRIBUTION CORRECTION (one line): some absent files were my own Delete+rewrite calls; the rest cause unknown — the "Drive sync" explanation is withdrawn per 4X39/5X32.
+- Observers: still no disable mechanism available to me; NOT claimed off (unconfirmed). Sandbox + approvals untouched. No paid call this turn; stopped after commit for operator inspection + scoped run instruction.

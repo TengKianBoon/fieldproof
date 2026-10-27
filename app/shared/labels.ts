@@ -1,11 +1,11 @@
-// Server-side evidence reader adapter (B1).
+// Server-side evidence reader adapter.
 // Interface receives BYTES ONLY: expected lot values can never leak into a
 // reader through this shape (mocked now, Spark model reader later).
-// MockPngReader measures readability from pixels (sharpness + cover detection,
-// thresholds calibrated 2026-10-27 on B5 fixtures: clear sharp 5.17, blurred
-// 2.94, covered blackFrac 0.24) and resolves the label through an explicit
-// content-hash registry populated by tests — a documented mock-only stand-in
-// for model reading. Unknown content yields null (never a guess).
+// MockPngReader measures readability from pixels (cover detection, then
+// sharpness; thresholds calibrated 2026-10-27 on B5 fixtures: clear 5.17,
+// soft/covered ~2.9, unreadable 1.83) and resolves the label through an
+// explicit content-hash registry populated by tests — a documented mock-only
+// stand-in for model reading. Unknown content yields null (never a guess).
 import { inflateSync } from "node:zlib";
 import { sha256Hex } from "./hash.ts";
 import type { Readability } from "./types.ts";
@@ -21,6 +21,7 @@ export interface LabelReader {
 
 const BLACK_FRAC_COVERED = 0.15;
 const SHARP_CLEAR = 4.0;
+const SHARP_UNREADABLE = 2.0;
 
 function decodePng(png: Uint8Array): { w: number; h: number; px: Uint8Array } | null {
   const magic = [137, 80, 78, 71, 13, 10, 26, 10].every((b, i) => png[i] === b);
@@ -97,6 +98,7 @@ export class MockPngReader implements LabelReader {
     const blackFrac = black / (w * h);
     const sharp = diff / n;
     if (blackFrac > BLACK_FRAC_COVERED) return { label: null, readability: "covered" };
+    if (sharp < SHARP_UNREADABLE) return { label: null, readability: "unreadable" };
     const label = this.registry.get(sha256Hex(bytes)) ?? null;
     if (label === null) return { label: null, readability: "unreadable" };
     return { label, readability: sharp >= SHARP_CLEAR ? "clear" : "blurred" };

@@ -4,6 +4,8 @@
 // an explicit reviewer decision on every matched/mismatched item.
 // B6e: capture and close-up require capturing; toReview needs every item
 // matched, mismatched or inconclusive.
+// B6g: toReview itself requires capturing (no double-send, no post-decision
+// resend): anything else returns not_capturing, never a 500 throw.
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
@@ -191,6 +193,7 @@ export class Missions {
     const l = this.loaded(missionId);
     if (l === null) return fail("unknown_mission");
     const { m, v } = l;
+    if (m.state !== "capturing") return fail("not_capturing");
     for (const e of m.expected) {
       if (!REVIEWABLE_ITEM.includes(m.observed[e.itemId].state)) return fail("items_open");
     }

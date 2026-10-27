@@ -6,9 +6,9 @@ import { MemoryStore } from "../shared/store.ts";
 import { MockPngReader } from "../shared/labels.ts";
 import type { Mission } from "../shared/types.ts";
 
-// B14: ONLY clear readability is compared. Blurred keeps its derived value
-// but routes unclear -> close-ups -> inconclusive. Regression: blurred B17
-// is never matched. B7: null/empty labels route unclear, never mismatched.
+// B14: ONLY clear readability is compared. Blurred (soft-B17) keeps its
+// derived value but routes unclear -> close-ups -> inconclusive. Regression:
+// blurred B17 is never matched. B7: null/empty labels route unclear.
 describe("readability routing (B14/B7)", () => {
   function setup() {
     const store = new MemoryStore();
@@ -22,9 +22,9 @@ describe("readability routing (B14/B7)", () => {
     return { ms, id: m.missionId, reader: new MockPngReader() };
   }
 
-  it("blurred B17 is never matched; value retained; inconclusive after 2 close-ups", () => {
+  it("soft (blurred) B17 is never matched; value retained; inconclusive after 2 close-ups", () => {
     const { ms, id, reader } = setup();
-    const bytes = readFileSync("app/.local-fixtures/img/blurred-B17.png");
+    const bytes = readFileSync("app/.local-fixtures/img/soft-B17.png");
     reader.register(bytes, "B17");
     const seen = reader.read(bytes);
     assert.equal(seen.readability, "blurred");

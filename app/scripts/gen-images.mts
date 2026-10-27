@@ -1,8 +1,9 @@
-// B5: deterministic REAL PNG fixtures (self-contained encoder, no new deps).
-// clear LOT B17 / blurred LOT B17 / partly covered LOT B71. Synthetic only.
-// Text rendered from a 5x7 bitmap font (real glyph pixels, visually meaningful).
-// Verifies magic, IHDR dims, IDAT integrity, glyph-pixel presence; writes manifest.
-// Run: node <abs path>/app/scripts/gen-images.mts   (uses CWD-relative out dir)
+// B5/5X29: deterministic REAL PNG fixtures (self-contained encoder, no deps).
+// clear-B17 (clean) / soft-B17 (legible despite blur) / unreadable-B17
+// (degraded past reading; 4ofX+5ofX must each view+confirm) / covered-B71.
+// Synthetic only. 5x7 bitmap font glyphs. Verifies magic, dims, IDAT
+// integrity (+ glyph pixels except unreadable-by-design); prints sharpness
+// metrics for threshold calibration; writes manifest with full SHA-256.
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { deflateSync, inflateSync } from "node:zlib";
 import { createHash } from "node:crypto";
@@ -10,7 +11,6 @@ import { createHash } from "node:crypto";
 const W = 400;
 const H = 160;
 
-// 5x7 glyphs for B, 1, 7.
 const FONT: Record<string, string[]> = {
   B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
   "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
@@ -37,14 +37,12 @@ function render(text: string): Uint8Array {
     px[o + 1] = v;
     px[o + 2] = v;
   };
-  // Border box.
   for (let x = 20; x < W - 20; x++) {
     for (const y of [24, 25, H - 26, H - 25]) set(x, y, 0);
   }
   for (let y = 24; y <= H - 24; y++) {
     for (const x of [20, 21, W - 22, W - 21]) set(x, y, 0);
   }
-  // Glyphs, scale 10, centered.
   const s = 10;
   const tw = text.length * 6 * s - s;
   const ox = Math.floor((W - tw) / 2);
@@ -98,6 +96,30 @@ function cover(px: Uint8Array): void {
   }
 }
 
+// Unreadable degradation: heavy speckle, repeated blur, mid-gray band.
+function destroy(px: Uint8Array): Uint8Array {
+  const r = mulberry(99);
+  for (let i = 0; i < 20000; i++) {
+    const o = Math.floor(r() * W * H) * 3;
+    const v = Math.floor(r() * 256);
+    px[o] = v;
+    px[o + 1] = v;
+    px[o + 2] = v;
+  }
+  let out = px;
+  for (let k = 0; k < 5; k++) out = blur(out);
+  for (let y = 35; y < 125; y++) {
+    for (let x = 40; x < 360; x++) {
+      const o = (y * W + x) * 3;
+      out[o] = 128;
+      out[o + 1] = 128;
+      out[o + 2] = 128;
+    }
+  }
+  out = blur(blur(out));
+  return out;
+}
+
 function speckle(px: Uint8Array, seed: number, n: number): void {
   const r = mulberry(seed);
   for (let i = 0; i < n; i++) {
@@ -149,33 +171,44 @@ function encodePNG(px: Uint8Array): Uint8Array {
   return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-function darkInTextBand(px: Uint8Array): number {
+function metrics(px: Uint8Array): { dark: number; sharp: number; blackFrac: number } {
+  let dark = 0;
+  let diff = 0;
   let n = 0;
-  for (let y = 40; y < 120; y++) {
-    for (let x = 60; x < 340; x++) {
-      if (px[(y * W + x) * 3] < 128) n++;
+  let black = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 3;
+      const g = (px[o] + px[o + 1] + px[o + 2]) / 3;
+      if (y >= 40 && y < 120 && x >= 60 && x < 340 && g < 128) dark++;
+      if (px[o] < 16 && px[o + 1] < 16 && px[o + 2] < 16) black++;
+      if (x + 1 < W) {
+        const o2 = (y * W + x + 1) * 3;
+        diff += Math.abs(g - (px[o2] + px[o2 + 1] + px[o2 + 2]) / 3);
+        n++;
+      }
     }
   }
-  return n;
+  return { dark, sharp: diff / n, blackFrac: black / (W * H) };
 }
 
 const outDir = "app/.local-fixtures/img";
 mkdirSync(outDir, { recursive: true });
 
-const specs: Array<[string, string, (px: Uint8Array) => Uint8Array | void, string]> = [
-  ["clear-B17.png", "B17", (px) => { speckle(px, 7, 400); return px; }, "clear LOT B17, light speckle"],
-  ["blurred-B17.png", "B17", (px) => blur(blur(px)), "deliberately blurred LOT B17 (2x box blur)"],
-  ["covered-B71.png", "B71", (px) => { cover(px); return px; }, "partly covered LOT B71 (middle bar)"],
+const specs: Array<[string, string, (px: Uint8Array) => Uint8Array | void, string, boolean]> = [
+  ["clear-B17.png", "B17", (px) => { speckle(px, 7, 400); return px; }, "clear LOT B17, light speckle", true],
+  ["soft-B17.png", "B17", (px) => blur(blur(px)), "legible despite blur (ex blurred-B17, same bytes)", true],
+  ["unreadable-B17.png", "B17", (px) => destroy(px), "degraded past reading; needs 4ofX+5ofX visual confirm", false],
+  ["covered-B71.png", "B71", (px) => { cover(px); return px; }, "partly covered LOT B71 (middle bar)", true],
 ];
 
-const lines = ["# B5 real-image manifest (generated 2026-10-27, deterministic, synthetic)", "# provenance: self-contained encoder app/scripts/gen-images.mts (5x7 bitmap font, PRNG seed fixed)", ""];
-for (const [name, text, fx, desc] of specs) {
+const lines = ["# B5/5X29 image manifest (generated 2026-10-27, deterministic, synthetic)", "# provenance: self-contained encoder app/scripts/gen-images.mts (5x7 bitmap font, fixed seeds)", ""];
+for (const [name, text, fx, desc, needGlyphs] of specs) {
   let px = render(text);
   const r = fx(px);
   if (r instanceof Uint8Array) px = r;
   const png = encodePNG(px);
   writeFileSync(`${outDir}/${name}`, png);
-  // Verify: magic, IHDR dims, IDAT inflates to exact raw size, glyph pixels present.
   const back = readFileSync(`${outDir}/${name}`);
   const magic = [137, 80, 78, 71, 13, 10, 26, 10].every((b, i) => back[i] === b);
   const w = back.readUInt32BE(16);
@@ -189,11 +222,12 @@ for (const [name, text, fx, desc] of specs) {
     off += 12 + len;
   }
   const raw = inflateSync(idat);
-  const dark = darkInTextBand(px);
+  const m = metrics(px);
   const sha = createHash("sha256").update(back).digest("hex");
-  const okAll = magic && w === W && h === H && raw.length === (W * 3 + 1) * H && dark > 1000;
-  lines.push(`${sha}  ${name}  ${w}x${h}  darkTextPx=${dark}  verify=${okAll ? "PASS" : "FAIL"}  ${desc}`);
-  console.log(`${name}: verify=${okAll ? "PASS" : "FAIL"} dark=${dark} bytes=${back.length}`);
+  const structural = magic && w === W && h === H && raw.length === (W * 3 + 1) * H;
+  const okAll = needGlyphs ? structural && m.dark > 200 : structural;
+  lines.push(`${sha}  ${name}  ${w}x${h}  dark=${m.dark} sharp=${m.sharp.toFixed(3)} blackFrac=${m.blackFrac.toFixed(4)}  verify=${okAll ? "PASS" : "FAIL"}  ${desc}`);
+  console.log(`${name}: verify=${okAll ? "PASS" : "FAIL"} sharp=${m.sharp.toFixed(3)} black=${m.blackFrac.toFixed(4)} bytes=${back.length}`);
   if (!okAll) process.exit(1);
 }
 writeFileSync(`${outDir}/IMAGES.md`, lines.join("\n") + "\n");

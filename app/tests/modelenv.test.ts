@@ -12,9 +12,12 @@ describe("model key gate", () => {
     assert.equal(hasModelKey({ META_API_KEY: "placeholder-value-here" }), false);
     assert.equal(hasModelKey({ META_API_KEY: "sk-test-synthetic-value-0000000000000000" }), true);
   });
-  it("parses KEY= lines strictly (no spaced variants, keeps = inside values)", () => {
+  it("parses KEY= lines strictly, stripping one quote pair (S12)", () => {
     assert.equal(parseEnvKey("META_API_KEY=abc123\n", "META_API_KEY"), "abc123");
     assert.equal(parseEnvKey("OTHER=1\nMETA_API_KEY=sk=x=y\r\n", "META_API_KEY"), "sk=x=y");
+    assert.equal(parseEnvKey('META_API_KEY="abc123"\n', "META_API_KEY"), "abc123");
+    assert.equal(parseEnvKey("META_API_KEY='abc123'\n", "META_API_KEY"), "abc123");
+    assert.equal(parseEnvKey('META_API_KEY="abc\n', "META_API_KEY"), '"abc');
     assert.equal(parseEnvKey("META_API_KEY=\n", "META_API_KEY"), null);
     assert.equal(parseEnvKey("META_API_KEY =abc\n", "META_API_KEY"), null);
     assert.equal(parseEnvKey(" META_API_KEY=abc\n", "META_API_KEY"), null);

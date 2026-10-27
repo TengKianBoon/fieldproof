@@ -4,7 +4,7 @@ import { Missions } from "../shared/missions.ts";
 import { MemoryStore } from "../shared/store.ts";
 import type { Mission } from "../shared/types.ts";
 
-// B6a-e negative tests at core level (HTTP twins live in handlers.test.ts).
+// B6a-e + B6g negative tests at core level (HTTP twins live in handlers.test.ts).
 describe("review and state gates (B6)", () => {
   function mission(): { ms: Missions; id: string } {
     const ms = new Missions(new MemoryStore());
@@ -45,8 +45,6 @@ describe("review and state gates (B6)", () => {
     ms.submitCapture(id, "b", { uploadId: "u", serverHash: "h", label: null, readability: "unreadable" });
     ms.requestCloseup(id, "b");
     assert.equal(ms.toReview(id).error, "items_open"); // closeup_requested is not reviewable
-    assert.equal(ms.toReview(id).error, "items_open");
-    void ms;
   });
 
   it("B6e: captures cannot continue after review starts", () => {
@@ -60,5 +58,19 @@ describe("review and state gates (B6)", () => {
       "not_capturing",
     );
     assert.equal(ms.requestCloseup(id, "a").error, "not_capturing");
+  });
+
+  it("B6g: toReview needs capturing (no double-send or post-decision resend)", () => {
+    const { ms, id } = mission();
+    matched(ms, id, "a");
+    ms.submitCapture(id, "b", { uploadId: "u", serverHash: "h", label: "B17", readability: "clear" });
+    ms.submitCapture(id, "c", { uploadId: "u", serverHash: "h", label: "B23", readability: "clear" });
+    assert.equal(ms.toReview(id).value?.state, "in_review");
+    assert.equal(ms.toReview(id).error, "not_capturing"); // double-send, not a 500
+    assert.equal(ms.decide(id, "a", "confirmed_match").ok, true);
+    assert.equal(ms.decide(id, "b", "confirmed_match").ok, true);
+    assert.equal(ms.decide(id, "c", "confirmed_match").ok, true);
+    assert.equal(ms.finishReview(id).value?.state, "decided");
+    assert.equal(ms.toReview(id).error, "not_capturing"); // post-decision resend
   });
 });

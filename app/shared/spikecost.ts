@@ -1,4 +1,4 @@
-// Spike costing, response parsing + scoring (R4-R7).
+// Spike costing, response parsing + scoring (R4-R7, S8, 5X29 four-image set).
 // Prices: 5X28 evidence from dev.meta.ai/pricing-rate-limits (live 2026-10-27
 // 15:00 SGT): Standard muse-spark-1.3 per 1M tokens: input US$1.25, cached
 // input US$0.15, output US$4.25 (reasoning tokens billed as output).
@@ -6,9 +6,7 @@
 // at usage.input_tokens_details.cached_tokens — there is NO top-level
 // cached_tokens field. Negative, non-finite, or cached>input usage is
 // rejected (null) so the caller charges the planning figure marked unknown.
-// The 2,000 input tokens is a PLANNING ESTIMATE, never a worst-case bound:
-// planningCapPerCall() is our own conservative accounting inside the US$0.50
-// reserve, not a provider hard-cap claim.
+// The 2,000 input tokens is a PLANNING ESTIMATE, never a worst-case bound.
 import { ok, fail, type Result } from "./types.ts";
 
 export const PRICE_IN = 1.25;
@@ -22,6 +20,7 @@ export interface Usage {
   input_tokens?: number;
   input_tokens_details?: { cached_tokens?: number };
   output_tokens?: number;
+  output_tokens_details?: { reasoning_tokens?: number };
   total_tokens?: number;
 }
 
@@ -44,6 +43,12 @@ export function costOf(u: Usage | null): number | null {
   return ((input - (cached as number)) * PRICE_IN + (cached as number) * PRICE_CACHED + output * PRICE_OUT) / 1_000_000;
 }
 
+// S8: surface reasoning tokens for the receipt (null when absent).
+export function reasoningOf(u: Usage | null): number | null {
+  const r = u?.output_tokens_details?.reasoning_tokens;
+  return finite(r) && (r as number) >= 0 ? (r as number) : null;
+}
+
 export interface Reading {
   readability: string;
   lot_code: string;
@@ -55,10 +60,11 @@ export function toLabel(r: Reading): string | null {
   return null;
 }
 
-// R7 scoring. Truth is applied ONLY here, after responses — never in prompts.
+// 5X29 four-image scoring. Truth is applied ONLY here, after responses.
 export function scoreImage(image: string, r: Reading): boolean {
   if (image === "clear-B17.png") return r.readability === "clear" && r.lot_code === "B17";
-  if (image === "blurred-B17.png") return r.readability !== "clear" && r.lot_code === "";
+  if (image === "soft-B17.png") return r.lot_code === "B17" || r.lot_code === "";
+  if (image === "unreadable-B17.png") return r.lot_code === "";
   if (image === "covered-B71.png") return r.lot_code === "";
   return false;
 }
@@ -67,7 +73,17 @@ export interface ParsedResponse {
   status: string;
   id: string | null;
   usage: Usage | null;
-  reading: Reading | null;
+  reading: Reading;
+}
+
+// S11: readings must be exact-shape (both strings, readability in enum).
+const READABILITY = ["clear", "blurred", "covered", "absent"];
+
+export function validReading(r: unknown): r is Reading {
+  const v = r as { readability?: unknown; lot_code?: unknown };
+  if (typeof v !== "object" || v === null) return false;
+  if (typeof v.readability !== "string" || typeof v.lot_code !== "string") return false;
+  return READABILITY.includes(v.readability);
 }
 
 // E7 walk over the actual Responses shape: output[] -> message ->
@@ -83,17 +99,17 @@ export function parseResponse(parsed: unknown): Result<ParsedResponse> {
     if (it.type !== "message" || !Array.isArray(it.content)) continue;
     for (const part of it.content) {
       const pt = part as { type?: unknown; text?: unknown };
-      if (pt.type === "output_text" && typeof pt.text === "string") text = pt.text;
+      if (pt.type === "output_text" && typeof part.text === "string") text = part.text as string;
     }
   }
   if (text === null) return fail("no_text");
-  let reading: Reading;
+  let reading: unknown;
   try {
-    reading = JSON.parse(text) as Reading;
+    reading = JSON.parse(text) as unknown;
   } catch {
     return fail("bad_json");
   }
-  if (typeof reading !== "object" || reading === null) return fail("bad_json");
+  if (!validReading(reading)) return fail("bad_reading");
   return ok({
     status: typeof p.status === "string" ? p.status : "unknown",
     id: typeof p.id === "string" ? p.id : null,
