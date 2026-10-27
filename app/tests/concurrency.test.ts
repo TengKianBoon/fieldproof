@@ -63,15 +63,17 @@ describe("concurrency (B4)", () => {
     const store = new MemoryStore();
     const l = new Ledger(store, 100);
     assert.equal(l.reserve("w", "m", "k", "model", 6).ok, true);
-    const sk = `ledger:${new Date().toISOString().slice(0, 10)}:m:w:k`;
+    const sk = `ledger:${new Date().toISOString().slice(0, 10)}`;
     const staleRaw = store.get(sk) as string;
     assert.equal(l.settle("w", "m", "k", 4).ok, true); // rival write moves version
-    const stale = JSON.parse(staleRaw) as { version: number };
-    const forged = JSON.parse(staleRaw) as { version: number; settled: number; status: string };
-    forged.version = 99;
-    forged.settled = 1;
-    forged.status = "settled";
-    assert.equal(l.writeExpecting(sk, forged as never, staleRaw, stale.version), false);
+    const staleDay = JSON.parse(staleRaw) as { entries: Record<string, { version: number }> };
+    const staleEntryVersion = staleDay.entries["m:w:k"].version;
+    const forged = {
+      key: "k", missionId: "m", caller: "w", purpose: "model",
+      day: new Date().toISOString().slice(0, 10),
+      reserved: 6, settled: 1, status: "settled", version: 99,
+    };
+    assert.equal(l.writeExpecting(sk, forged as never, staleRaw, staleEntryVersion), false);
     assert.equal(l.spent(), 4); // exactly once
   });
 

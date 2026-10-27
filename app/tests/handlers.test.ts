@@ -56,7 +56,7 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
     requester = a.requester;
     const b = await makeMission("Other");
     other = b.worker;
-    const { ctx } = await import("../netlify/functions/_ctx.mts");
+    const { ctx } = await import("../netlify/lib/_ctx.mts");
     const reader = ctx().reader as MockPngReader;
     reader.register(readFileSync("app/.local-fixtures/img/clear-B17.png"), "B17");
     reader.register(readFileSync("app/.local-fixtures/img/covered-B71.png"), "B71");
