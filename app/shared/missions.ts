@@ -25,6 +25,11 @@ export function boxId(i: number): string {
   return `box${i + 1}`;
 }
 
+// Task 0b: only these item states may start a new upload/capture. Finished
+// items (matched/mismatched/inconclusive/abandoned) refuse with item_done
+// before anything is stored, reserved, or read.
+export const CAPTURABLE_ITEM = ["expected", "closeup_requested", "unclear"];
+
 export interface ServerEvidence {
   uploadId: string;
   serverHash: string;

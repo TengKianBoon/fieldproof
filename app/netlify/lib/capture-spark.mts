@@ -17,6 +17,7 @@ import {
   SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
 import { metaDiag } from "../../shared/agentDraft.ts";
+import { CAPTURABLE_ITEM } from "../../shared/missions.ts";
 import { fail } from "../../shared/types.ts";
 import type { LedgerEntry } from "../../shared/ledger.ts";
 import type { Readability } from "../../shared/types.ts";
@@ -69,6 +70,16 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
       const rec = c.uploads.record(uploadId);
       if (rec === null || !rec.done || rec.serverHash === null) return { error: "upload_incomplete" };
       if (rec.manifest.missionId !== missionId || rec.manifest.itemId !== itemId) return { error: "upload_ownership" };
+      // Task 0b: finished items refuse BEFORE bytes load, ledger reserve,
+      // the jobs claim, or any Spark fetch. Undefined ids fall through to
+      // the submitCapture guard below (unknown_item), as before.
+      // S2d replay contract first: the same upload already recorded on a
+      // finished item is an idempotent replay (`already_handled`), not a
+      // refusal — a NEW upload on a finished item gets `item_done`.
+      const o = m.observed[itemId] as { state?: unknown; uploadId?: unknown } | undefined;
+      const finished = o !== undefined && (typeof o.state !== "string" || !CAPTURABLE_ITEM.includes(o.state));
+      if (o !== undefined && finished && o.uploadId === uploadId) return { error: "already_handled" };
+      if (finished) return { error: "item_done" };
       const bytes = uploadBytes(uploadId);
       if (bytes === null) return { error: "upload_bytes_missing" };
       if (!sha256Equal(sha256Hex(bytes), rec.serverHash)) return { error: "hash_mismatch" };

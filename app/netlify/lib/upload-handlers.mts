@@ -7,6 +7,7 @@
 // never bare get-modify-set.
 import { ctx, json, needToken, store } from "./_ctx.mts";
 import { sha256Hex } from "../../shared/hash.ts";
+import { CAPTURABLE_ITEM } from "../../shared/missions.ts";
 
 async function bodyOf(req: Request): Promise<Record<string, unknown>> {
   return (await req.json()) as Record<string, unknown>;
@@ -64,13 +65,26 @@ export async function initHandler(req: Request): Promise<Response> {
   if (m === null) return json(404, { error: "unknown_mission" });
   if (m.state !== "capturing") return json(400, { error: "not_capturing" });
   if (m.observed[itemId] === undefined) return json(400, { error: "unknown_item" });
-  // Idempotent: same key returns the same server uploadId.
+  // Task 0b: finished items refuse BEFORE anything is stored. The same-key
+  // replay below also refuses: a done item stays done.
+  const o = m.observed[itemId] as { state?: unknown };
+  if (typeof o.state !== "string" || !CAPTURABLE_ITEM.includes(o.state)) {
+    return json(400, { error: "item_done" });
+  }
+  // Idempotent: same key returns the same server uploadId. The upload record
+  // itself is usually only in Blobs (preloaded only when its id is hinted),
+  // so a present idem key alone rebinds the same upload; the count falls
+  // back to this request's manifest (same key means same manifest).
   const seen = store().get(idemKey(missionId, String(idem)));
   if (seen !== null) {
     const rec = uploads.record(seen);
     if (rec !== null) {
       return json(200, { uploadId: seen, chunkCount: Math.ceil(rec.manifest.bytesTotal / rec.manifest.chunkSize) });
     }
+    const total = manifest.bytesTotal as unknown;
+    const size = manifest.chunkSize as unknown;
+    const chunks = typeof total === "number" && typeof size === "number" && size > 0 ? Math.ceil(total / size) : 1;
+    return json(200, { uploadId: seen, chunkCount: Number.isFinite(chunks) && chunks > 0 ? chunks : 1 });
   }
   const bytesTotal = manifest.bytesTotal;
   if (typeof bytesTotal !== "number") return json(400, { error: "bad_input" });

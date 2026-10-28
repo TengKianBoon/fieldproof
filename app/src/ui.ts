@@ -88,6 +88,14 @@ function wrongCodeMsg(): string {
   return `Wrong access code (${n} character${n === 1 ? "" : "s"} entered)`;
 }
 
+// Task 0b stale-item message: finished items refuse server-side; the worker
+// gets refresh guidance, never a raw error code.
+function staleItemMsg(m: string): string | null {
+  return (m.includes("item_done") || m.includes("bad_item_state"))
+    ? "This item already has a photo — refresh the page to see its current state."
+    : null;
+}
+
 function viewNew(el: HTMLElement): void {
   const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
   el.innerHTML = `<h1>New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
@@ -334,10 +342,15 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   if (workIndex < 0) workIndex = 0;
   const k = workIndex;
   const cur = m.items[k];
+  // Task 0b: finished items show no capture controls — only the done note
+  // with Next / Send-for-review guidance.
+  const finished = cur.state === "matched" || cur.state === "mismatched" || cur.state === "inconclusive";
   const card = `<div class="card" data-item="${esc(cur.itemId)}">
       <p><strong>${esc(cur.itemId)}</strong> — ${esc(plainWorkerItem(cur.state))}</p>
-      <input type="file" accept="image/*" capture="environment" data-photo="${esc(cur.itemId)}" />
-      <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>
+      ${finished
+        ? `<p class="muted">Photo received - this item is done. Continue with Next, or Send for review when every item shows Photo received.</p>`
+        : `<input type="file" accept="image/*" capture="environment" data-photo="${esc(cur.itemId)}" />
+      <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>`}
       <div data-msg="${esc(cur.itemId)}"></div></div>`;
   const allDone = m.items.every((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive");
   el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1><p class="muted">Item ${k + 1} of ${m.items.length}</p><div id="w-items">${card}</div>
@@ -351,7 +364,8 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     workIndex = k + 1;
     void render();
   };
-  for (const it of [cur]) {
+  // Finished items render no controls, so there is nothing to wire.
+  for (const it of finished ? [] : [cur]) {
     const btn = el.querySelector(`[data-shoot="${it.itemId}"]`) as HTMLButtonElement;
     const inp = el.querySelector(`[data-photo="${it.itemId}"]`) as HTMLInputElement;
     const msg = el.querySelector(`[data-msg="${it.itemId}"]`) as HTMLElement;
@@ -359,6 +373,10 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     inp.onchange = async () => {
       const f = inp.files?.[0];
       if (!f) return;
+      // No duplicate taps while an upload is in flight.
+      if (btn.disabled) return;
+      btn.disabled = true;
+      inp.disabled = true;
       msg.innerHTML = `<p class="muted">Uploading…</p>`;
       try {
         const small = await shrinkPhoto(f);
@@ -375,7 +393,10 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
               await calls.closeup(missionId, token, it.itemId);
               msg.innerHTML = `<p class="ok">Close-up requested — take another photo above.</p>`;
             } catch (e) {
-              if (String((e as Error).message).includes("closeup_exhausted")) {
+              const cm = String((e as Error).message);
+              const stale = staleItemMsg(cm);
+              if (stale !== null) msg.innerHTML = `<p class="err">${esc(stale)}</p>`;
+              else if (cm.includes("closeup_exhausted")) {
                 await calls.inconclusive(missionId, token, it.itemId);
                 await render();
               } else msg.innerHTML = errBox(e);
@@ -387,9 +408,14 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
         }
       } catch (e) {
         const m = e instanceof Error ? e.message : String(e);
-        msg.innerHTML = m.includes("reader_unavailable")
-          ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>${diagLine(e)}`
-          : errBox(e);
+        const stale = staleItemMsg(m);
+        msg.innerHTML = stale !== null ? `<p class="err">${esc(stale)}</p>`
+          : m.includes("reader_unavailable")
+            ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>${diagLine(e)}`
+            : errBox(e);
+      } finally {
+        btn.disabled = false;
+        inp.disabled = false;
       }
     };
   }
