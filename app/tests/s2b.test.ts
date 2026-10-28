@@ -90,7 +90,7 @@ describe("S2b evidence-get auth", () => {
     const req = (body: unknown, headers?: Record<string, string>) =>
       new Request("http://local/x", { method: "POST", headers: { "content-type": "application/json", ...(headers ?? {}) }, body: JSON.stringify(body) });
     const c = (await (await create(req({
-      siteLabel: "Ev", expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "Ev", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
     }))).json()) as Record<string, string>;
     missionId = c.missionId;
     worker = c.workerToken;
@@ -99,13 +99,13 @@ describe("S2b evidence-get auth", () => {
     assert.equal((await (await consent(req({ missionId, token: worker, workerId: "w", consentVersion: "v1" }))).status), 200);
     const all = readFileSync("app/.local-fixtures/img/clear-B17.png");
     const init = (await (await initHandler(req({
-      missionId, token: worker, idempotencyKey: "ev1", manifest: { missionId, itemId: "b1", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" },
+      missionId, token: worker, idempotencyKey: "ev1", manifest: { missionId, itemId: "box1", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" },
     }))).json()) as Record<string, string>;
     uploadId = init.uploadId;
     const { sha256Hex } = await import("../shared/hash.ts");
     const b64 = Buffer.from(all).toString("base64");
-    assert.equal((await (await chunkHandler(req({ missionId, token: worker, uploadId, itemId: "b1", index: 0, bytesB64: b64, hash: sha256Hex(all) }))).status), 200);
-    assert.equal((await (await completeHandler(req({ missionId, token: worker, uploadId, itemId: "b1", idempotencyKey: "ev1" }))).status), 200);
+    assert.equal((await (await chunkHandler(req({ missionId, token: worker, uploadId, itemId: "box1", index: 0, bytesB64: b64, hash: sha256Hex(all) }))).status), 200);
+    assert.equal((await (await completeHandler(req({ missionId, token: worker, uploadId, itemId: "box1", idempotencyKey: "ev1" }))).status), 200);
   });
 
   async function getEvidence(token: string | null, mid: string, up: string): Promise<Response> {

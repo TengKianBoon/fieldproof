@@ -36,7 +36,7 @@ async function setupMission(): Promise<{ missionId: string; worker: string; revi
   const { default: createH } = await import("../netlify/functions/mission-create.mts");
   const { default: consentH } = await import("../netlify/functions/consent-accept.mts");
   const c = (await (await post(createH, {
-    siteLabel: "S7", expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }], deadline: "t",
+    siteLabel: "S7", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
   })).json()) as { missionId: string; workerToken: string; reviewToken: string };
   const ok = (await (await post(consentH, { missionId: c.missionId, token: c.workerToken, workerId: "w", consentVersion: "v1" }))).status;
   assert.equal(ok, 200);
@@ -70,14 +70,14 @@ describe("post-test fixes", () => {
     globalThis.fetch = (async () => { throw new Error("down"); }) as unknown as typeof fetch;
     try {
       const { missionId, worker } = await setupMission();
-      const uid = await upload(missionId, worker, "b2", "s7-502", "clear-B17.png");
+      const uid = await upload(missionId, worker, "box2", "s7-502", "clear-B17.png");
       const { default: captureH } = await import("../netlify/functions/capture-submit.mts");
-      const r = await post(captureH, { missionId, token: worker, itemId: "b2", uploadId: uid });
+      const r = await post(captureH, { missionId, token: worker, itemId: "box2", uploadId: uid });
       assert.equal(r.status, 502);
       const body = (await r.json()) as { error: string; httpStatus: number };
       assert.equal(body.error, "reader_unavailable");
       assert.equal(body.httpStatus, 0);
-      assert.equal(ctx().missions.load(missionId)?.observed.b2.state, "expected");
+      assert.equal(ctx().missions.load(missionId)?.observed.box2.state, "expected");
     } finally {
       globalThis.fetch = realFetch;
       restore();
@@ -93,9 +93,9 @@ describe("post-test fixes", () => {
     delete process.env.META_API_KEY;
     try {
       const { missionId, worker } = await setupMission();
-      const uid = await upload(missionId, worker, "b1", "s7-unread", "unreadable-B17.png");
+      const uid = await upload(missionId, worker, "box1", "s7-unread", "unreadable-B17.png");
       const { default: captureH } = await import("../netlify/functions/capture-submit.mts");
-      const r = await post(captureH, { missionId, token: worker, itemId: "b1", uploadId: uid });
+      const r = await post(captureH, { missionId, token: worker, itemId: "box1", uploadId: uid });
       assert.equal(r.status, 200);
       assert.equal(((await r.json()) as { state: string }).state, "unclear");
     } finally {
@@ -125,7 +125,7 @@ describe("post-test fixes", () => {
     try {
       const { missionId, reviewer } = await setupMission();
       const { default: decideH } = await import("../netlify/functions/review-decide.mts");
-      const r = await post(decideH, { missionId, token: reviewer, itemId: "b2", decision: "confirmed_match" });
+      const r = await post(decideH, { missionId, token: reviewer, itemId: "box2", decision: "confirmed_match" });
       assert.equal(r.status, 400);
       assert.equal(((await r.json()) as { error: string }).error, "not_in_review");
     } finally {

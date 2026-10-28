@@ -53,7 +53,7 @@ describe("cross-mission chunk/complete", () => {
     const mk = async (site: string) => {
       const c = await jsonOf(
         await handlerCreate(
-          req({ siteLabel: site, expectedItems: [{ itemId: "b1", expectedLabel: "B1" }, { itemId: "b2", expectedLabel: "B2" }, { itemId: "b3", expectedLabel: "B3" }], deadline: "t" }),
+          req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B1" }, { itemId: "box2", expectedLabel: "B2" }, { itemId: "box3", expectedLabel: "B3" }], deadline: "t" }),
         ),
       );
       return { missionId: String(c.body.missionId), worker: String(c.body.workerToken) };
@@ -68,7 +68,7 @@ describe("cross-mission chunk/complete", () => {
     await jsonOf(await handlerConsent(req({ missionId: bMission, token: bWorker, workerId: "w", consentVersion: "v1" })));
     const init = await jsonOf(
       await initHandler(
-        req({ missionId: aMission, token: aWorker, idempotencyKey: "x1", manifest: { missionId: aMission, itemId: "b1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
+        req({ missionId: aMission, token: aWorker, idempotencyKey: "x1", manifest: { missionId: aMission, itemId: "box1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
       ),
     );
     uploadId = String(init.body.uploadId);
@@ -80,21 +80,21 @@ describe("cross-mission chunk/complete", () => {
     const hash = sha256Hex(all);
     // Both missions capturing: the denial must come from ownership, not state.
     const crossChunk = await jsonOf(
-      await chunkHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "b1", index: 0, bytesB64: b64, hash })),
+      await chunkHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "box1", index: 0, bytesB64: b64, hash })),
     );
     assert.equal(crossChunk.status, 403);
     assert.equal(crossChunk.body.error, "upload_ownership");
     const crossComplete = await jsonOf(
-      await completeHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "b1", idempotencyKey: "x1" })),
+      await completeHandler(req({ missionId: bMission, token: bWorker, uploadId, itemId: "box1", idempotencyKey: "x1" })),
     );
     assert.equal(crossComplete.status, 403);
     assert.equal(crossComplete.body.error, "upload_ownership");
     const own = await jsonOf(
-      await chunkHandler(req({ missionId: aMission, token: aWorker, uploadId, itemId: "b1", index: 0, bytesB64: b64, hash })),
+      await chunkHandler(req({ missionId: aMission, token: aWorker, uploadId, itemId: "box1", index: 0, bytesB64: b64, hash })),
     );
     assert.equal(own.status, 200);
     const done = await jsonOf(
-      await completeHandler(req({ missionId: aMission, token: aWorker, uploadId, itemId: "b1", idempotencyKey: "x1" })),
+      await completeHandler(req({ missionId: aMission, token: aWorker, uploadId, itemId: "box1", idempotencyKey: "x1" })),
     );
     assert.equal(done.status, 200);
   });

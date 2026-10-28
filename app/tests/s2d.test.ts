@@ -112,7 +112,7 @@ describe("S2d full flow over shared mocked Blobs only", () => {
     const { default: finishH } = await import("../netlify/functions/finish-review.mts");
     const { default: exportH } = await import("../netlify/functions/export-pack.mts");
     const c = await jsonOf(await post(createH, {
-      siteLabel: "S2d", expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "S2d", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
     }));
     assert.equal(c.status, 200);
     missionId = String(c.body.missionId);
@@ -121,19 +121,19 @@ describe("S2d full flow over shared mocked Blobs only", () => {
     requester = String(c.body.requesterToken);
     assert.equal((await jsonOf(await post(consentH, { missionId, token: worker, workerId: "w", consentVersion: "v1" }))).status, 200);
     // b2 matches (clear B17), b1 mismatches (clear B17 vs B12), b3 goes inconclusive.
-    const u2 = await upload("b2", "s2d-b2", "clear-B17.png");
-    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "b2", uploadId: u2 }))).body.state, "matched");
-    const u1 = await upload("b1", "s2d-b1", "clear-B17.png");
-    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "b1", uploadId: u1 }))).body.state, "mismatched");
+    const u2 = await upload("box2", "s2d-b2", "clear-B17.png");
+    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box2", uploadId: u2 }))).body.state, "matched");
+    const u1 = await upload("box1", "s2d-b1", "clear-B17.png");
+    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box1", uploadId: u1 }))).body.state, "mismatched");
     for (const k of ["s2d-b3a", "s2d-b3b", "s2d-b3c"]) {
-      const u = await upload("b3", k, "covered-B71.png");
-      assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "b3", uploadId: u }))).body.state, "unclear");
-      if (k !== "s2d-b3c") assert.equal((await jsonOf(await post(closeupH, { missionId, token: worker, itemId: "b3" }))).status, 200);
+      const u = await upload("box3", k, "covered-B71.png");
+      assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box3", uploadId: u }))).body.state, "unclear");
+      if (k !== "s2d-b3c") assert.equal((await jsonOf(await post(closeupH, { missionId, token: worker, itemId: "box3" }))).status, 200);
     }
-    assert.equal((await jsonOf(await post(inconcH, { missionId, token: worker, itemId: "b3" }))).status, 200);
+    assert.equal((await jsonOf(await post(inconcH, { missionId, token: worker, itemId: "box3" }))).status, 200);
     assert.equal((await jsonOf(await post(toReviewH, { missionId, token: worker }))).status, 200);
-    assert.equal((await jsonOf(await post(decideH, { missionId, token: reviewer, itemId: "b2", decision: "confirmed_match" }))).status, 200);
-    assert.equal((await jsonOf(await post(decideH, { missionId, token: reviewer, itemId: "b1", decision: "confirmed_mismatch" }))).status, 200);
+    assert.equal((await jsonOf(await post(decideH, { missionId, token: reviewer, itemId: "box2", decision: "confirmed_match" }))).status, 200);
+    assert.equal((await jsonOf(await post(decideH, { missionId, token: reviewer, itemId: "box1", decision: "confirmed_mismatch" }))).status, 200);
     assert.equal((await jsonOf(await post(finishH, { missionId, token: reviewer }))).status, 200);
     const ex = await get(exportH, `missionId=${missionId}`, requester);
     assert.equal(ex.status, 200);
@@ -163,7 +163,7 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
     const { default: consentH } = await import("../netlify/functions/consent-accept.mts");
     const { default: captureH } = await import("../netlify/functions/capture-submit.mts");
     const c = await jsonOf(await post(createH, {
-      siteLabel: "Spark", expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "Spark", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
     }));
     const mid = String(c.body.missionId);
     const wt = String(c.body.workerToken);
@@ -175,12 +175,12 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
     const b64 = Buffer.from(bytes).toString("base64");
     const init = await jsonOf(await post(initH, {
       missionId: mid, token: wt, idempotencyKey: "sp1",
-      manifest: { missionId: mid, itemId: "b2", attemptId: "a", bytesTotal: bytes.length, chunkSize: 65536, clientHash: "x" },
+      manifest: { missionId: mid, itemId: "box2", attemptId: "a", bytesTotal: bytes.length, chunkSize: 65536, clientHash: "x" },
     }));
     assert.equal(init.status, 200);
     const uid = String(init.body.uploadId);
-    assert.equal((await jsonOf(await post(chunkH, { missionId: mid, token: wt, uploadId: uid, itemId: "b2", index: 0, bytesB64: b64, hash: sha256Hex(bytes) }))).status, 200);
-    assert.equal((await jsonOf(await post(completeH, { missionId: mid, token: wt, uploadId: uid, itemId: "b2", idempotencyKey: "sp1" }))).status, 200);
+    assert.equal((await jsonOf(await post(chunkH, { missionId: mid, token: wt, uploadId: uid, itemId: "box2", index: 0, bytesB64: b64, hash: sha256Hex(bytes) }))).status, 200);
+    assert.equal((await jsonOf(await post(completeH, { missionId: mid, token: wt, uploadId: uid, itemId: "box2", idempotencyKey: "sp1" }))).status, 200);
     // Sabotage the first day-ledger write of phase 2: the settle transact
     // must retry without a second external call.
     let sabotage = true;
@@ -205,13 +205,13 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
       return new Response(JSON.stringify(completedSparkBody()));
     }) as unknown as typeof fetch;
     try {
-      const first = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "b2", uploadId: uid }));
+      const first = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "box2", uploadId: uid }));
       assert.equal(first.status, 200);
       assert.equal(first.body.state, "matched");
       assert.equal(sparkCalls, 1);
       assert.equal(samCalls, 1);
       // A full replay settles nothing twice and never refetches.
-      const replay = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "b2", uploadId: uid }));
+      const replay = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "box2", uploadId: uid }));
       assert.equal(replay.body.error, "already_handled");
       assert.equal(sparkCalls, 1);
       assert.equal(samCalls, 1);

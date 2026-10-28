@@ -69,6 +69,15 @@ export function plainState(state: string): string {
   return state;
 }
 
+// Worker-facing item words (5X106/107): a stored photo is only ever
+// "Photo received" — the worker never sees match/mismatch readings, so the
+// result cannot leak through the heading. Unclear/close-up guidance is
+// unchanged. Display only; gates compare raw codes.
+export function plainWorkerItem(state: string): string {
+  if (state === "matched" || state === "mismatched") return "Photo received";
+  return plainItem(state);
+}
+
 // Plain-word item/decision labels for display only; gates compare raw codes.
 export function plainItem(state: string): string {
   const words: Record<string, string> = {
@@ -88,7 +97,33 @@ export function plainItem(state: string): string {
 
 const NOTHING = "—";
 
-export function buildReport(m: ReportMission): ReportData {
+// Truthful date display: explicit timezone rendering plus the original
+// record value for audit. Invalid or missing input renders a dash. Never
+// combine dateStyle/timeStyle with timeZoneName (invalid): explicit fields
+// only. timeZone is injectable so tests stay deterministic.
+export function fmtDateTime(iso: string | undefined, timeZone = "UTC"): string {
+  if (typeof iso !== "string" || iso === "") return NOTHING;
+  if (!Number.isFinite(Date.parse(iso))) return NOTHING;
+  const d = new Date(iso);
+  const fields = {
+    year: "numeric" as const,
+    month: "short" as const,
+    day: "numeric" as const,
+    hour: "2-digit" as const,
+    minute: "2-digit" as const,
+    hour12: false,
+    timeZoneName: "short" as const,
+  };
+  let local: string;
+  try {
+    local = new Intl.DateTimeFormat("en-GB", { ...fields, timeZone }).format(d);
+  } catch {
+    local = new Intl.DateTimeFormat("en-GB", { ...fields, timeZone: "UTC" }).format(d);
+  }
+  return `${local} (recorded ${iso})`;
+}
+
+export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
   const decisions = m.reviewerDecision ?? {};
   const seen = m.observed ?? {};
   const items: ReportItem[] = [];
@@ -131,15 +166,18 @@ export function buildReport(m: ReportMission): ReportData {
       hasPhoto: o.uploadId !== null && o.uploadId !== undefined && o.uploadId !== "",
       hasBox: box !== null,
       box: box === null ? null : { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 },
-      samNote: box !== null ? null : sam === "none" ? resc("none found") : sam.startsWith("sam:") ? resc(`unavailable (${sam})`) : null,
+      samNote: box !== null ? null
+        : sam === "none" ? resc("none found")
+        : sam.startsWith("sam:skipped") ? resc("not run")
+        : sam.startsWith("sam:") ? resc(`unavailable (${sam})`) : null,
     });
   }
   return {
     mission: shortRef(m.missionId),
     site: resc(m.siteLabel ?? NOTHING),
     status: resc(plainState(m.state ?? "")),
-    created: resc(m.createdAt ?? NOTHING),
-    deadline: resc(m.deadline ?? NOTHING),
+    created: fmtDateTime(m.createdAt, timeZone),
+    deadline: fmtDateTime(m.deadline, timeZone),
     items,
     unresolved,
     mismatched,
@@ -181,7 +219,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `.card{border:1px solid #999;border-radius:.5rem;padding:.75rem;margin:.6rem 0;page-break-inside:avoid}`
     + `img{width:100%}.muted{color:#555;font-size:.9rem}.err{color:#a00;font-weight:600}`
     + `.hash{word-break:break-all;font-size:.8rem}`
-    + `.box{position:relative}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#0a0;color:#fff;font-size:.8rem}`
+    + `.box{position:relative}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#fff;color:#111;border:1px solid #111;font-size:.8rem;print-color-adjust:exact;-webkit-print-color-adjust:exact}`
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`

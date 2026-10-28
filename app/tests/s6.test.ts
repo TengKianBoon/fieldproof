@@ -23,7 +23,7 @@ async function create(headers: Record<string, string>): Promise<Response> {
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({
       siteLabel: "S6",
-      expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }],
+      expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }],
       deadline: "t",
     }),
   }));

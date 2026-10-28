@@ -8,6 +8,7 @@
 // settle the measured cost, uncertain settles at max.
 import { costOf, planningCapPerCall, type Usage } from "./spikecost.ts";
 import { fail } from "./types.ts";
+import { CODE_RE, MAX_ITEMS } from "./missions.ts";
 import type { Ledger } from "./ledger.ts";
 
 export const AGENT_MODEL = "muse-spark-1.3";
@@ -24,14 +25,13 @@ export interface MissionDraft {
   deadline: string;
 }
 
-const CODE_RE = /^[A-Z0-9]{1,20}$/;
-
-// Server-side validation: codes are tight, count is bounded, deadline parses.
+// Server-side validation: codes are tight, count matches the unified
+// 1-10 item schema, deadline parses.
 export function validDraft(d: unknown): d is MissionDraft {
   if (typeof d !== "object" || d === null) return false;
   const v = d as { siteLabel?: unknown; expectedCodes?: unknown; deadline?: unknown };
   if (typeof v.siteLabel !== "string" || v.siteLabel.trim() === "" || v.siteLabel.length > 200) return false;
-  if (!Array.isArray(v.expectedCodes) || v.expectedCodes.length < 1 || v.expectedCodes.length > 20) return false;
+  if (!Array.isArray(v.expectedCodes) || v.expectedCodes.length < 1 || v.expectedCodes.length > MAX_ITEMS) return false;
   for (const c of v.expectedCodes) {
     if (typeof c !== "string" || !CODE_RE.test(c)) return false;
   }
@@ -63,9 +63,9 @@ export function buildAgentRequest(description: string): Record<string, unknown> 
           siteLabel: { type: "string", description: "Where the collection happens." },
           expectedCodes: {
             type: "array",
-            description: "Expected lot codes, each 1-20 chars of A-Z and 0-9.",
+            description: "Expected lot codes, 1-10 items, each 1-20 chars of A-Z and 0-9.",
             minItems: 1,
-            maxItems: 20,
+            maxItems: 10,
             items: { type: "string" },
           },
           deadline: { type: "string", description: "ISO date-time the collection is due." },

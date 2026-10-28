@@ -16,6 +16,15 @@ import type { KVStore } from "./store.ts";
 export const MAX_CLOSEUPS = 2;
 export const CONSENT_VERSION = "v1";
 
+// Unified item schema (Stage 1b): 1-10 labelled boxes per mission. Labels are
+// tight codes; the server boundary assigns box1..N and ignores client ids.
+export const CODE_RE = /^[A-Z0-9]{1,20}$/;
+export const MIN_ITEMS = 1;
+export const MAX_ITEMS = 10;
+export function boxId(i: number): string {
+  return `box${i + 1}`;
+}
+
 export interface ServerEvidence {
   uploadId: string;
   serverHash: string;
@@ -60,7 +69,10 @@ export class Missions {
   }
 
   create(siteLabel: string, expected: ExpectedItem[], deadline: string): Result<Mission> {
-    if (expected.length !== 3) return fail("need_three_items");
+    if (expected.length < MIN_ITEMS || expected.length > MAX_ITEMS) return fail("bad_item_count");
+    for (const e of expected) {
+      if (typeof e.expectedLabel !== "string" || !CODE_RE.test(e.expectedLabel)) return fail("bad_label");
+    }
     const missionId = newId("m");
     const m: Mission = {
       missionId,

@@ -5,7 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls } from "./client.ts";
-import { buildReport, plainItem, plainState, reportDocument } from "./report.ts";
+import { buildReport, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -92,15 +92,39 @@ function viewNew(el: HTMLElement): void {
   const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
   el.innerHTML = `<h1>New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
-    <label>Expected code, box 1<input id="f-c1" type="text" value="B12" /></label>
-    <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
-    <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
+    <div id="f-codes"></div>
+    <button id="f-add">Add another box</button>
     <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
     <label><input id="f-show" type="checkbox" style="width:auto" /> Show code</label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
     <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
+    <label>Delivery note photo<input id="f-note" type="file" accept="image/*" /></label>
+    <button id="f-notedraft">Draft from delivery note</button>
+    <div id="f-nprev"></div><div id="f-nmsg"></div><div id="f-nfields"></div>
+    <label><input id="f-confirm" type="checkbox" style="width:auto" /> I checked every field against the note photo</label>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
+  // Dynamic code rows, 1-10. The server assigns box1..N and validates.
+  const codeRows = (values: string[]): void => {
+    const box = document.getElementById("f-codes") as HTMLElement;
+    const vals = values.slice(0, 10);
+    box.innerHTML = vals.map((v, i) =>
+      `<label>Expected code, box ${i + 1}<input class="f-code-in" type="text" value="${esc(v)}" /></label>`).join("")
+      + (vals.length > 1 ? `<button id="f-rm">Remove last box</button>` : "");
+    const rm = document.getElementById("f-rm") as HTMLButtonElement | null;
+    if (rm !== null) rm.onclick = () => codeRows(codeValues().slice(0, -1));
+  };
+  const codeValues = (): string[] =>
+    Array.from(document.querySelectorAll(".f-code-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+  codeRows(["B12", "B17", "B23"]);
+  (document.getElementById("f-add") as HTMLButtonElement).onclick = () => {
+    const v = codeValues();
+    if (v.length >= 10) return;
+    codeRows([...v, ""]);
+  };
+  // Note-draft confirmation gate: armed by a note draft, cleared by render.
+  let notePending = false;
+  const confirmBox = document.getElementById("f-confirm") as HTMLInputElement;
   try {
     (document.getElementById("f-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
     // Show-code toggle: unchecked (masked) every render, never persisted.
@@ -127,8 +151,10 @@ function viewNew(el: HTMLElement): void {
     if (goBtn.disabled) return;
     goBtn.disabled = true;
     try {
+      if (notePending && !confirmBox.checked) throw new Error("note_unconfirmed");
       const site = (document.getElementById("f-site") as HTMLInputElement).value;
-      const codes = ["f-c1", "f-c2", "f-c3"].map((id) => (document.getElementById(id) as HTMLInputElement).value);
+      const codes = codeValues().map((c) => c.trim()).filter((c) => c !== "");
+      if (codes.length < 1) throw new Error("need_one_code");
       const dlRaw = (document.getElementById("f-dl") as HTMLInputElement).value;
       const dlMs = Date.parse(dlRaw);
       if (!Number.isFinite(dlMs)) throw new Error("bad_deadline");
@@ -156,7 +182,11 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-again") as HTMLButtonElement).onclick = () => viewNew(el);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
-      out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? wrongCodeMsg() : m)}</p>`;
+      const friendly = m.includes("requester_code_denied") ? wrongCodeMsg()
+        : m.includes("note_unconfirmed") ? "Check the draft against the note photo and tick confirmation first."
+        : m.includes("need_one_code") ? "Enter at least one expected code."
+        : m;
+      out.innerHTML = `<p class="err">${esc(friendly)}</p>`;
       goBtn.disabled = false;
     }
   };
@@ -176,9 +206,7 @@ function viewNew(el: HTMLElement): void {
       }
       const d = j.draft as { siteLabel: string; expectedCodes: string[]; deadline: string };
       (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel;
-      for (let i = 0; i < 3; i++) {
-        (document.getElementById(`f-c${i + 1}`) as HTMLInputElement).value = d.expectedCodes[i] ?? "";
-      }
+      codeRows(d.expectedCodes.slice(0, 10));
       (document.getElementById("f-dl") as HTMLInputElement).value = toLocalInput(new Date(d.deadline));
       fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, then Create mission.</p>`;
     } catch (e) {
@@ -188,12 +216,81 @@ function viewNew(el: HTMLElement): void {
         : errBox(e);
     }
   };
+  (document.getElementById("f-notedraft") as HTMLButtonElement).onclick = async () => {
+    const nmsg = document.getElementById("f-nmsg") as HTMLElement;
+    const nprev = document.getElementById("f-nprev") as HTMLElement;
+    const nfields = document.getElementById("f-nfields") as HTMLElement;
+    const b = document.getElementById("f-notedraft") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
+    try {
+      const f = (document.getElementById("f-note") as HTMLInputElement).files?.[0];
+      if (!f) throw new Error("no_note_photo");
+      const small = await shrinkPhoto(f);
+      let bin = "";
+      for (let i = 0; i < small.length; i += 8192) {
+        bin += String.fromCharCode(...small.subarray(i, i + 8192));
+      }
+      const r = await fetch("/.netlify/functions/delivery-note-draft", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...codeHeaders() },
+        body: JSON.stringify({ imageB64: btoa(bin) }),
+      });
+      const j = (await r.json()) as {
+        draft?: {
+          siteLabel: { value: string; snippet: string };
+          codes: Array<{ value: string; snippet: string }>;
+          deadline: { value: string; snippet: string };
+          timezone: { value: string | null; snippet: string };
+        };
+        error?: string;
+      };
+      if (!r.ok) {
+        const code = String(j.error ?? r.status);
+        throw new Error(code.includes("requester_code_denied") ? wrongCodeMsg() : code);
+      }
+      const d = j.draft as {
+        siteLabel: { value: string; snippet: string };
+        codes: Array<{ value: string; snippet: string }>;
+        deadline: { value: string; snippet: string };
+        timezone: { value: string | null; snippet: string };
+      };
+      const pu = URL.createObjectURL(new Blob([small.slice().buffer as ArrayBuffer], { type: "image/jpeg" }));
+      revoked.push(pu);
+      nprev.innerHTML = `<img src="${pu}" alt="delivery note preview" />`;
+      (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel.value;
+      codeRows(d.codes.map((c) => c.value).slice(0, 10));
+      (document.getElementById("f-dl") as HTMLInputElement).value = toLocalInput(new Date(d.deadline.value));
+      const snip = (label: string, s: string): string =>
+        `<p class="muted">${esc(label)}: ${s === "" ? "source unknown" : `“${esc(s)}”`}</p>`;
+      nfields.innerHTML = snip("Site", d.siteLabel.snippet)
+        + d.codes.map((c, i) => snip(`Box ${i + 1}`, c.snippet)).join("")
+        + snip("Deadline", d.deadline.snippet)
+        + `<p class="muted">Time zone: ${d.timezone.value === null ? "unknown — confirm it by hand" : esc(d.timezone.value)}</p>`
+        + `<p class="muted">Snippets quote what the model read — check them against the photo yourself. Snippet agreement is not independent verification.</p>`;
+      notePending = true;
+      confirmBox.checked = false;
+      nmsg.innerHTML = `<p class="ok">Draft ready — check every field against the photo, tick confirmation, then Create mission.</p>`;
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      nmsg.innerHTML = m.includes("no_note_photo") ? `<p class="err">Choose a delivery-note photo first.</p>`
+        : m.includes("model_http_") ? `<p class="err">Delivery-note draft unavailable - fill fields by hand.</p><p class="muted">${esc(m)}</p>`
+        : errBox(e);
+    } finally {
+      b.disabled = false;
+    }
+  };
 }
 
 interface BriefItem {
   itemId: string;
   state: string;
 }
+
+// Guided-capture position: persists across viewWork re-renders so a worker
+// keeps their place after each photo; reset whenever the mission changes.
+let workMission = "";
+let workIndex = 0;
 
 async function viewWork(el: HTMLElement, missionId: string, token: string): Promise<void> {
   const s = await calls.state(missionId, token) as {
@@ -208,7 +305,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   }
   if (m.state !== "capturing") {
     el.innerHTML = `<h1>Collection</h1><p>${esc(m.siteLabel)}</p>
-      <div class="card"><p>Consent: photos of the three labelled boxes are collected as delivery evidence and shown to the reviewer.</p>
+      <div class="card"><p>Consent: photos of each labelled box are collected as delivery evidence and shown to the reviewer.</p>
       <label>Worker ID<input id="w-id" type="text" value="worker-1" /></label>
       <button id="w-ok" class="primary">Accept and start</button></div><div id="w-out"></div>`;
     (document.getElementById("w-ok") as HTMLButtonElement).onclick = async () => {
@@ -227,15 +324,34 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     };
     return;
   }
-  const cards = m.items.map((it) => `<div class="card" data-item="${esc(it.itemId)}">
-      <p><strong>${esc(it.itemId)}</strong> — ${esc(plainItem(it.state))}</p>
-      <input type="file" accept="image/*" capture="environment" data-photo="${esc(it.itemId)}" />
-      <button data-shoot="${esc(it.itemId)}" class="primary">Take photo</button>
-      <div data-msg="${esc(it.itemId)}"></div></div>`).join("");
+  // Guided capture: one item at a time ("Item k of N") with previous/next.
+  // Headings show photo-words only, so readings never leak to the worker.
+  if (workMission !== missionId) {
+    workMission = missionId;
+    workIndex = 0;
+  }
+  if (workIndex >= m.items.length) workIndex = 0;
+  if (workIndex < 0) workIndex = 0;
+  const k = workIndex;
+  const cur = m.items[k];
+  const card = `<div class="card" data-item="${esc(cur.itemId)}">
+      <p><strong>${esc(cur.itemId)}</strong> — ${esc(plainWorkerItem(cur.state))}</p>
+      <input type="file" accept="image/*" capture="environment" data-photo="${esc(cur.itemId)}" />
+      <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>
+      <div data-msg="${esc(cur.itemId)}"></div></div>`;
   const allDone = m.items.every((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive");
-  el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1><div id="w-items">${cards}</div>
+  el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1><p class="muted">Item ${k + 1} of ${m.items.length}</p><div id="w-items">${card}</div>
+    <div class="row"><button id="w-prev"${k === 0 ? " disabled" : ""}>Previous</button><button id="w-next"${k === m.items.length - 1 ? " disabled" : ""}>Next</button></div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
-  for (const it of m.items) {
+  (document.getElementById("w-prev") as HTMLButtonElement).onclick = () => {
+    workIndex = k - 1;
+    void render();
+  };
+  (document.getElementById("w-next") as HTMLButtonElement).onclick = () => {
+    workIndex = k + 1;
+    void render();
+  };
+  for (const it of [cur]) {
     const btn = el.querySelector(`[data-shoot="${it.itemId}"]`) as HTMLButtonElement;
     const inp = el.querySelector(`[data-photo="${it.itemId}"]`) as HTMLInputElement;
     const msg = el.querySelector(`[data-msg="${it.itemId}"]`) as HTMLElement;
@@ -266,7 +382,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
             }
           };
         } else {
-          msg.innerHTML = `<p class="ok">Server reading: ${esc(plainItem(cap.state))}.</p>`;
+          msg.innerHTML = `<p class="ok">Photo received.</p>`;
           await render();
         }
       } catch (e) {
@@ -424,7 +540,14 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         return;
       }
       try {
-        const data = buildReport({ ...m, missionId });
+        // Device timezone for display; the raw record value stays alongside.
+        let deviceTz = "UTC";
+        try {
+          deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+        } catch {
+          deviceTz = "UTC";
+        }
+        const data = buildReport({ ...m, missionId }, deviceTz);
         const urls: Array<string | null> = [];
         for (const e of m.expected) {
           const rec = m.observed[e.itemId] as { uploadId: string | null } | undefined;

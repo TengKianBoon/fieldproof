@@ -62,9 +62,9 @@ async function captureWithSam(samReply: Response): Promise<{ seen: { imageUrl: s
   const c = await jsonOf(await post(createH, {
     siteLabel: "S8",
     expectedItems: [
-      { itemId: "b1", expectedLabel: "B12" },
-      { itemId: "b2", expectedLabel: "B17" },
-      { itemId: "b3", expectedLabel: "B23" },
+      { itemId: "box1", expectedLabel: "B12" },
+      { itemId: "box2", expectedLabel: "B17" },
+      { itemId: "box3", expectedLabel: "B23" },
     ],
     deadline: "t",
   }));
@@ -75,13 +75,13 @@ async function captureWithSam(samReply: Response): Promise<{ seen: { imageUrl: s
   const all = readFileSync("app/.local-fixtures/img/clear-B17.png");
   const init = await jsonOf(await post(initH, {
     missionId: mid, token: wt, idempotencyKey: "s8",
-    manifest: { missionId: mid, itemId: "b2", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" },
+    manifest: { missionId: mid, itemId: "box2", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" },
   }));
   assert.equal(init.status, 200);
   const uid = String(init.body.uploadId);
   const b64 = Buffer.from(all).toString("base64");
-  assert.equal((await jsonOf(await post(chunkH, { missionId: mid, token: wt, uploadId: uid, itemId: "b2", index: 0, bytesB64: b64, hash: sha256Hex(all) }))).status, 200);
-  assert.equal((await jsonOf(await post(completeH, { missionId: mid, token: wt, uploadId: uid, itemId: "b2", idempotencyKey: "s8" }))).status, 200);
+  assert.equal((await jsonOf(await post(chunkH, { missionId: mid, token: wt, uploadId: uid, itemId: "box2", index: 0, bytesB64: b64, hash: sha256Hex(all) }))).status, 200);
+  assert.equal((await jsonOf(await post(completeH, { missionId: mid, token: wt, uploadId: uid, itemId: "box2", idempotencyKey: "s8" }))).status, 200);
   const seen: { imageUrl: string } = { imageUrl: "" };
   const sam: { imageUrl: string } = { imageUrl: "" };
   const realFetch = globalThis.fetch;
@@ -96,10 +96,10 @@ async function captureWithSam(samReply: Response): Promise<{ seen: { imageUrl: s
     return new Response(JSON.stringify(sparkOkB17()));
   }) as unknown as typeof fetch;
   try {
-    const cap = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "b2", uploadId: uid }));
+    const cap = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "box2", uploadId: uid }));
     const m = await blobsScope(mid, {}, () => ctx().missions.load(mid));
     assert.ok(m !== null);
-    return { seen, sam, cap: { status: cap.status, state: cap.body.state }, item: (m as unknown as Seen).observed.b2 };
+    return { seen, sam, cap: { status: cap.status, state: cap.body.state }, item: (m as unknown as Seen).observed.box2 };
   } finally {
     globalThis.fetch = realFetch;
   }

@@ -30,7 +30,7 @@ async function jsonOf(r: Response): Promise<{ status: number; body: Record<strin
 async function makeMission(site: string): Promise<{ missionId: string; worker: string; reviewer: string; requester: string }> {
   const c = await jsonOf(
     await handlerCreate(
-      req({ siteLabel: site, expectedItems: [{ itemId: "b1", expectedLabel: "B12" }, { itemId: "b2", expectedLabel: "B17" }, { itemId: "b3", expectedLabel: "B23" }], deadline: "tomorrow" }),
+      req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "tomorrow" }),
     ),
   );
   return {
@@ -86,26 +86,26 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
 
   it("captures via completed uploadId; injected client labels rejected", async () => {
     assert.equal((await jsonOf(await handlerConsent(req({ missionId, token: worker, workerId: "w", consentVersion: "v1" })))).status, 200);
-    const up = await upload(missionId, worker, "b2", "cap1", "clear-B17.png");
-    const good = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "b2", uploadId: up })));
+    const up = await upload(missionId, worker, "box2", "cap1", "clear-B17.png");
+    const good = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box2", uploadId: up })));
     assert.equal(good.status, 200);
     assert.equal(good.body.state, "matched");
     const evil = await jsonOf(
-      await handlerCapture(req({ missionId, token: worker, itemId: "b1", uploadId: up, observedLabel: "B12", readable: true })),
+      await handlerCapture(req({ missionId, token: worker, itemId: "box1", uploadId: up, observedLabel: "B12", readable: true })),
     );
     assert.equal(evil.status, 400);
     assert.equal(evil.body.error, "client_labels_rejected");
-    const missing = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "b1", uploadId: "00000000-0000-0000-0000-000000000000" })));
+    const missing = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box1", uploadId: "00000000-0000-0000-0000-000000000000" })));
     assert.equal(missing.status, 400);
-    assert.equal((await jsonOf(await handlerCapture(req({ missionId, token: other, itemId: "b1", uploadId: up })))).status, 403);
-    assert.equal((await jsonOf(await handlerCapture(req({ missionId, token: reviewer, itemId: "b1", uploadId: up })))).status, 403);
+    assert.equal((await jsonOf(await handlerCapture(req({ missionId, token: other, itemId: "box1", uploadId: up })))).status, 403);
+    assert.equal((await jsonOf(await handlerCapture(req({ missionId, token: reviewer, itemId: "box1", uploadId: up })))).status, 403);
   });
 
   it("enforces consent/item gating and idempotent re-init (B2)", async () => {
     const fresh = await makeMission("Gate");
     const pre = await jsonOf(
       await initHandler(
-        req({ missionId: fresh.missionId, token: fresh.worker, idempotencyKey: "g1", manifest: { missionId: fresh.missionId, itemId: "b1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
+        req({ missionId: fresh.missionId, token: fresh.worker, idempotencyKey: "g1", manifest: { missionId: fresh.missionId, itemId: "box1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
       ),
     );
     assert.equal(pre.status, 400);
@@ -118,14 +118,14 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
     );
     assert.equal(badItem.body.error, "unknown_item");
     const all = readFileSync("app/.local-fixtures/img/clear-B17.png");
-    const manifest = { missionId: fresh.missionId, itemId: "b1", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" };
+    const manifest = { missionId: fresh.missionId, itemId: "box1", attemptId: "a", bytesTotal: all.length, chunkSize: 65536, clientHash: "x" };
     const i1 = await jsonOf(await initHandler(req({ missionId: fresh.missionId, token: fresh.worker, idempotencyKey: "dup", manifest })));
     const i2 = await jsonOf(await initHandler(req({ missionId: fresh.missionId, token: fresh.worker, idempotencyKey: "dup", manifest })));
     assert.equal(i1.body.uploadId, i2.body.uploadId);
     const id = String(i1.body.uploadId);
     const b64 = Buffer.from(all).toString("base64");
     const cross = await jsonOf(
-      await chunkHandler(req({ missionId: fresh.missionId, token: fresh.worker, uploadId: id, itemId: "b2", index: 0, bytesB64: b64, hash: sha256Hex(all) })),
+      await chunkHandler(req({ missionId: fresh.missionId, token: fresh.worker, uploadId: id, itemId: "box2", index: 0, bytesB64: b64, hash: sha256Hex(all) })),
     );
     assert.equal(cross.status, 403);
     assert.equal(cross.body.error, "upload_ownership");
@@ -133,32 +133,32 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
 
   it("drives the B6 review gates to a decided export over HTTP", async () => {
     assert.equal((await jsonOf(await toReviewHandler(req({ missionId, token: worker })))).body.error, "items_open");
-    const u1 = await upload(missionId, worker, "b1", "g-b1", "clear-B17.png");
-    const c1 = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "b1", uploadId: u1 })));
+    const u1 = await upload(missionId, worker, "box1", "g-b1", "clear-B17.png");
+    const c1 = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box1", uploadId: u1 })));
     assert.equal(c1.body.state, "mismatched");
     for (const k of ["g3a", "g3b", "g3c"]) {
-      const u = await upload(missionId, worker, "b3", k, "covered-B71.png");
-      const c = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "b3", uploadId: u })));
+      const u = await upload(missionId, worker, "box3", k, "covered-B71.png");
+      const c = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box3", uploadId: u })));
       assert.equal(c.body.state, "unclear");
       if (k !== "g3c") {
-        assert.equal((await jsonOf(await handlerCloseup(req({ missionId, token: worker, itemId: "b3" })))).status, 200);
+        assert.equal((await jsonOf(await handlerCloseup(req({ missionId, token: worker, itemId: "box3" })))).status, 200);
       }
     }
-    assert.equal((await jsonOf(await markInconclusiveHandler(req({ missionId, token: worker, itemId: "b3" })))).status, 200);
-    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "b1", decision: "confirmed_mismatch" })))).status, 400);
+    assert.equal((await jsonOf(await markInconclusiveHandler(req({ missionId, token: worker, itemId: "box3" })))).status, 200);
+    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "box1", decision: "confirmed_mismatch" })))).status, 400);
     const deniedExport = await get(missionId, reviewer, exportHandler);
     assert.equal(deniedExport.status, 400);
     assert.equal((await jsonOf(await toReviewHandler(req({ missionId, token: worker })))).status, 200);
     // Late evidence is refused at upload-init once review starts (B6e).
     const late = await jsonOf(
       await initHandler(
-        req({ missionId, token: worker, idempotencyKey: "late1", manifest: { missionId, itemId: "b1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
+        req({ missionId, token: worker, idempotencyKey: "late1", manifest: { missionId, itemId: "box1", attemptId: "a", bytesTotal: 100, chunkSize: 100, clientHash: "x" } }),
       ),
     );
     assert.equal(late.status, 400);
     assert.equal(late.body.error, "not_capturing");
-    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "b1", decision: "confirmed_mismatch" })))).status, 200);
-    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "b2", decision: "confirmed_match" })))).status, 200);
+    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "box1", decision: "confirmed_mismatch" })))).status, 200);
+    assert.equal((await jsonOf(await handlerReview(req({ missionId, token: reviewer, itemId: "box2", decision: "confirmed_match" })))).status, 200);
     assert.equal((await jsonOf(await finishReviewHandler(req({ missionId, token: reviewer })))).status, 200);
     const wExport = await get(missionId, worker, exportHandler);
     assert.equal(wExport.status, 403);
@@ -169,10 +169,10 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
     assert.equal("expected" in wv.mission, false);
     assert.ok(!(JSON.stringify(wv.mission) as string).includes("B12"));
     const rv = await (await get(missionId, reviewer, stateHandler)).json() as { mission: Record<string, unknown> };
-    assert.equal((rv.mission.reviewerDecision as Record<string, string>).b1, "confirmed_mismatch");
+    assert.equal((rv.mission.reviewerDecision as Record<string, string>).box1, "confirmed_mismatch");
     const big = await jsonOf(
       await initHandler(
-        req({ missionId, token: worker, idempotencyKey: "big", manifest: { missionId, itemId: "b1", attemptId: "a", bytesTotal: 812 * 1024 * 1024, chunkSize: 1024, clientHash: "x" } }),
+        req({ missionId, token: worker, idempotencyKey: "big", manifest: { missionId, itemId: "box1", attemptId: "a", bytesTotal: 812 * 1024 * 1024, chunkSize: 1024, clientHash: "x" } }),
       ),
     );
     assert.equal(big.status, 400);
