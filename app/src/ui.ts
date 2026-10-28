@@ -30,6 +30,24 @@ function plainState(state: string): string {
   return state;
 }
 
+// S10 plain-word item/decision labels for display only; every gate still
+// compares the raw codes.
+function plainItem(state: string): string {
+  const words: Record<string, string> = {
+    expected: "Expected",
+    observed_clear: "Observed",
+    unclear: "Unclear",
+    closeup_requested: "Close-up requested",
+    matched: "Matched",
+    mismatched: "Mismatched",
+    confirmed_match: "Confirmed match",
+    confirmed_mismatch: "Confirmed mismatch",
+    inconclusive: "Inconclusive",
+    abandoned: "Abandoned",
+  };
+  return words[state] ?? state;
+}
+
 function diagLine(e: unknown): string {
   const d = (e as { diag?: unknown }).diag;
   return typeof d === "string" && /^[A-Za-z0-9:_. -]{1,80}$/.test(d) ? `<p class="muted">${esc(d)}</p>` : "";
@@ -197,7 +215,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
     const note = flash;
     flash = "";
-    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(plainState(m.state))} — capture is closed.</p>`;
+    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))} — capture is closed.</p>`;
     return;
   }
   if (m.state !== "capturing") {
@@ -222,7 +240,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     return;
   }
   const cards = m.items.map((it) => `<div class="card" data-item="${esc(it.itemId)}">
-      <p><strong>${esc(it.itemId)}</strong> — ${esc(it.state)}</p>
+      <p><strong>${esc(it.itemId)}</strong> — ${esc(plainItem(it.state))}</p>
       <input type="file" accept="image/*" capture="environment" data-photo="${esc(it.itemId)}" />
       <button data-shoot="${esc(it.itemId)}" class="primary">Take photo</button>
       <div data-msg="${esc(it.itemId)}"></div></div>`).join("");
@@ -245,7 +263,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
         const cap = await calls.capture(missionId, token, it.itemId, up.uploadId) as { state: string };
         if (cap.state === "unclear") {
           const head = el.querySelector(`[data-item="${it.itemId}"] > p`) as HTMLElement | null;
-          if (head !== null) head.textContent = `${it.itemId} — unclear`;
+          if (head !== null) head.textContent = `${it.itemId} — ${plainItem("unclear")}`;
           msg.innerHTML = `<p>Label unclear — take a close-up (at most 2), then it goes inconclusive.</p>
             <button data-cu="${esc(it.itemId)}">Request close-up</button>`;
           (msg.querySelector(`[data-cu="${it.itemId}"]`) as HTMLButtonElement).onclick = async () => {
@@ -260,7 +278,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
             }
           };
         } else {
-          msg.innerHTML = `<p class="ok">Server reading: ${esc(cap.state)}.</p>`;
+          msg.innerHTML = `<p class="ok">Server reading: ${esc(plainItem(cap.state))}.</p>`;
           await render();
         }
       } catch (e) {
@@ -310,14 +328,14 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     cards.push(`<div class="card" data-item="${esc(e.itemId)}">
-      <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${esc(o.state)})</p>
+      <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${esc(plainItem(o.state))})</p>
       <div data-photo="${esc(e.itemId)}"><p class="muted">Loading photo…</p></div>
       <div class="row"${m.state === "in_review" ? "" : " hidden"}><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
       <button data-inc="${esc(e.itemId)}"${m.state === "in_review" ? "" : " hidden"}>Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
   }
   const note = flash;
   flash = "";
-  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(plainState(m.state))}</p>
+  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button><div id="r-out"></div>`;
@@ -353,7 +371,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       });
       try {
         await calls.decide(missionId, token, e.itemId, decision);
-        msg.innerHTML = `<p class="ok">Recorded: ${esc(decision)}.</p>`;
+        msg.innerHTML = `<p class="ok">Recorded: ${esc(plainItem(decision))}.</p>`;
       } catch (err) {
         msg.innerHTML = errBox(err);
       } finally {
