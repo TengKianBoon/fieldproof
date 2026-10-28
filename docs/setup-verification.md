@@ -165,3 +165,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — Deploy path fix (one commit)
 - Root netlify.toml drops `base`, pins publish `app/dist` + functions `app/netlify/functions`, build `npm --prefix app run build`. Verified: exact command builds offline (app/dist + assets); 15 endpoints; only runtime dep @netlify/blobs resolves from app.
+
+## Addendum 2026-10-28 — R1 README (one commit)
+- Root README.md (demo flow, model use, diagram, integrity limits incl. process-scoped revocation, run steps, honest limits). Hygiene: 94 tracked files, no real secrets (test-only placeholders in 4 test files + dev fallback); .env.local/.netlify/node_modules/dist ignored.
