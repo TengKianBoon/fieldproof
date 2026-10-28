@@ -20,3 +20,11 @@ pre { white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; font-size: 0.
 /* Author display rules (e.g. .row flex) otherwise override the hidden
    attribute; hidden must always win so success states can hide controls. */
 [hidden] { display: none !important; }
+
+/* Stage 1a print: the report alone prints. Controls, links (which may carry
+   address tokens), the interactive item list, and transient messages never
+   reach paper or PDF. */
+@media print {
+  button, .links, #f-last, #r-items, #r-out, #r-print, #r-finish, #r-dl { display: none !important; }
+  body { max-width: none; }
+}

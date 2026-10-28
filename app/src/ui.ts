@@ -5,6 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls } from "./client.ts";
+import { buildReport, plainItem, plainState } from "./report.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -20,32 +21,6 @@ function esc(s: string): string {
 
 function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 12)}…` : id;
-}
-
-// S9 plain-English mission states for worker/reviewer screens (wording only;
-// every gate still runs on the raw state).
-function plainState(state: string): string {
-  if (state === "in_review") return "With the reviewer";
-  if (state === "decided") return "Review finished";
-  return state;
-}
-
-// S10 plain-word item/decision labels for display only; every gate still
-// compares the raw codes.
-function plainItem(state: string): string {
-  const words: Record<string, string> = {
-    expected: "Expected",
-    observed_clear: "Observed",
-    unclear: "Unclear",
-    closeup_requested: "Close-up requested",
-    matched: "Matched",
-    mismatched: "Mismatched",
-    confirmed_match: "Confirmed match",
-    confirmed_mismatch: "Confirmed mismatch",
-    inconclusive: "Inconclusive",
-    abandoned: "Abandoned",
-  };
-  return words[state] ?? state;
 }
 
 function diagLine(e: unknown): string {
@@ -322,12 +297,17 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   const s = await calls.state(missionId, token) as {
     mission: {
       state: string;
+      siteLabel: string;
+      deadline: string;
+      createdAt: string;
       expected: Array<{ itemId: string; expectedLabel: string }>;
       observed: Record<string, {
         observedLabel: string | null; readability: string; state: string; uploadId: string | null;
+        serverHash: string | null;
         labelBox?: { x1: number; y1: number; x2: number; y2: number; confidence: number } | null;
         samStatus?: { uploadId: string; status: string } | null;
       }>;
+      reviewerDecision: Record<string, string>;
     };
   };
   const m = s.mission;
@@ -351,7 +331,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
-    <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button><div id="r-out"></div>`;
+    <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
+    <button id="r-print">Print report</button><div id="r-report"></div><div id="r-out"></div>`;
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     const slot = el.querySelector(`[data-photo="${e.itemId}"]`) as HTMLElement;
@@ -422,6 +403,62 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       a.click();
     } catch (e) {
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
+    }
+  };
+  // Stage 1a readable report: built only from the already-authorized mission
+  // view plus evidence photos through the existing flow. Report strings from
+  // buildReport are pre-escaped and inserted WITHOUT re-escaping; raw values
+  // below are escaped at use. No tokens, links, codes, or secrets included.
+  (document.getElementById("r-print") as HTMLButtonElement).onclick = async () => {
+    const slot = document.getElementById("r-report") as HTMLElement;
+    const b = document.getElementById("r-print") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
+    try {
+      const data = buildReport({ ...m, missionId });
+      const blocks: string[] = [];
+      for (let i = 0; i < data.items.length; i++) {
+        const e = m.expected[i];
+        const row = data.items[i];
+        const rec = m.observed[e.itemId] as
+          { uploadId: string | null; labelBox?: { x1: number; y1: number; x2: number; y2: number } | null } | undefined;
+        const uid = rec?.uploadId ?? null;
+        let photo = `<p class="muted">No photo yet.</p>`;
+        if (uid !== null && uid !== "") {
+          try {
+            const blob = await evidenceBlob(missionId, uid, token);
+            const u = URL.createObjectURL(blob);
+            revoked.push(u);
+            const bx = rec?.labelBox ?? null;
+            photo = bx !== null
+              ? `<div style="position:relative"><img src="${u}" alt="evidence ${esc(e.itemId)}" style="width:100%" /><div style="position:absolute;left:${bx.x1 * 100}%;top:${bx.y1 * 100}%;width:${Math.max(0, bx.x2 - bx.x1) * 100}%;height:${Math.max(0, bx.y2 - bx.y1) * 100}%;border:3px solid #0a0;box-sizing:border-box"><span style="background:#0a0;color:#fff;font-size:.8rem">AI-located label</span></div></div>`
+              : `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
+          } catch {
+            photo = `<p class="err">Photo unavailable for ${esc(e.itemId)}.</p>`;
+          }
+        }
+        const boxNote = row.hasBox || row.samNote === null ? "" : `<p class="muted">AI box: ${row.samNote}</p>`;
+        const decision = row.decision === null
+          ? `<span class="muted">unresolved — awaiting reviewer decision</span>`
+          : row.decision;
+        blocks.push(`<div class="card"><p><strong>${row.itemId}</strong> — expected ${row.expected}, observed ${row.observed} (${row.reading}, ${row.state})</p>`
+          + photo + boxNote
+          + `<p>Reviewer decision: ${decision}</p>`
+          + `<p class="muted">Evidence fingerprint (SHA-256): ${row.fingerprint}</p></div>`);
+      }
+      const open = data.unresolved.length === 0 ? "" : `<p>Unresolved items: ${data.unresolved.join(", ")}</p>`;
+      slot.innerHTML = `<div class="card"><h2>Field evidence report</h2>`
+        + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
+        + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
+        + open + blocks.join("")
+        + `<p class="muted">Times shown are server record times. No photo capture time or location is recorded.</p>`
+        + `<p class="muted">Fingerprints are SHA-256 of the stored bytes: they prove the bytes are unchanged, not what the camera saw.</p>`
+        + `<p class="muted">Companion machine-readable evidence: JSON export pack (unsigned).</p></div>`;
+      window.print();
+    } catch (e) {
+      (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
+    } finally {
+      b.disabled = false;
     }
   };
 }
