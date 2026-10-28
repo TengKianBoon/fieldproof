@@ -174,3 +174,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — R1 README (one commit)
 - Root README.md (demo flow, model use, diagram, integrity limits incl. process-scoped revocation, run steps, honest limits). Hygiene: 94 tracked files, no real secrets (test-only placeholders in 4 test files + dev fallback); .env.local/.netlify/node_modules/dist ignored.
+
+## Addendum 2026-10-28 — 5X63 round 1 (one commit)
+- Round-1 remedy: Create stays locked after success until Start another mission; Finish rerenders decided state so Download appears (flash kept); deadline default now+24h local + agent ISO via Date to local input; sanitised diag code shown below friendly reader/agent text, no raw/key/user text. Evidence: tsc clean, 108/108, offline build OK.

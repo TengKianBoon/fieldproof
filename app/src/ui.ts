@@ -22,6 +22,16 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 12)}…` : id;
 }
 
+function diagLine(e: unknown): string {
+  const d = (e as { diag?: unknown }).diag;
+  return typeof d === "string" && /^[A-Za-z0-9:_. -]{1,80}$/.test(d) ? `<p class="muted">${esc(d)}</p>` : "";
+}
+
+function toLocalInput(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 let flash = "";
 
 function errBox(e: unknown): string {
@@ -71,12 +81,13 @@ function codeHeaders(): Record<string, string> {
 }
 
 function viewNew(el: HTMLElement): void {
+  const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
   el.innerHTML = `<h1>New collection</h1><div id="f-last"></div>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
     <label>Expected code, box 1<input id="f-c1" type="text" value="B12" /></label>
     <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
     <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
-    <label>Deadline<input id="f-dl" type="datetime-local" value="2026-10-28T18:00" /></label>
+    <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
     <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
@@ -129,7 +140,6 @@ function viewNew(el: HTMLElement): void {
         // Private mode: no recovery card.
       }
       (document.getElementById("f-again") as HTMLButtonElement).onclick = () => viewNew(el);
-      goBtn.disabled = false;
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? "Wrong access code" : m)}</p>`;
@@ -155,12 +165,12 @@ function viewNew(el: HTMLElement): void {
       for (let i = 0; i < 3; i++) {
         (document.getElementById(`f-c${i + 1}`) as HTMLInputElement).value = d.expectedCodes[i] ?? "";
       }
-      (document.getElementById("f-dl") as HTMLInputElement).value = d.deadline.slice(0, 16);
+      (document.getElementById("f-dl") as HTMLInputElement).value = toLocalInput(new Date(d.deadline));
       fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, then Create mission.</p>`;
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       fmsg.innerHTML = m.includes("model_http_")
-        ? `<p class="err">AI draft unavailable - fill fields by hand (${esc(m)}).</p>`
+        ? `<p class="err">AI draft unavailable - fill fields by hand.</p><p class="muted">${esc(m)}</p>`
         : errBox(e);
     }
   };
@@ -248,7 +258,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       } catch (e) {
         const m = e instanceof Error ? e.message : String(e);
         msg.innerHTML = m.includes("reader_unavailable")
-          ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>`
+          ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>${diagLine(e)}`
           : errBox(e);
       }
     };
@@ -296,7 +306,9 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       <div class="row"${m.state === "in_review" ? "" : " hidden"}><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
       <button data-inc="${esc(e.itemId)}"${m.state === "in_review" ? "" : " hidden"}>Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
   }
-  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1><p class="muted">Mission is ${esc(m.state)}</p>
+  const note = flash;
+  flash = "";
+  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(m.state)}</p>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button><div id="r-out"></div>`;
@@ -346,7 +358,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     b.disabled = true;
     try {
       await calls.finishReview(missionId, token);
-      (document.getElementById("r-out") as HTMLElement).innerHTML = `<p class="ok">Review finished.</p>`;
+      flash = "Review finished.";
+      await render();
     } catch (e) {
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
     } finally {

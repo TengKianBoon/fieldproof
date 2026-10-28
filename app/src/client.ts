@@ -14,7 +14,12 @@ async function post(name: string, body: unknown, fetchFn: FetchFn = fetch, heade
     body: JSON.stringify(body),
   });
   const j = (await r.json()) as Record<string, unknown>;
-  if (!r.ok) throw new Error(String(j.error ?? r.status));
+  if (!r.ok) {
+    const err = new Error(String(j.error ?? r.status)) as Error & { diag?: unknown; httpStatus?: unknown };
+    if (typeof j.diag === "string") err.diag = j.diag;
+    if (typeof j.httpStatus === "number") err.httpStatus = j.httpStatus;
+    throw err;
+  }
   return j;
 }
 
