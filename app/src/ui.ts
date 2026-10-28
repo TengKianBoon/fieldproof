@@ -103,6 +103,7 @@ function viewNew(el: HTMLElement): void {
     <div id="f-codes"></div>
     <button id="f-add">Add another box</button>
     <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
+    <p>Deadline time zone (required, choose one): <span id="f-tzrow"></span></p>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
     <label><input id="f-show" type="checkbox" style="width:auto" /> Show code</label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
@@ -125,6 +126,40 @@ function viewNew(el: HTMLElement): void {
   const codeValues = (): string[] =>
     Array.from(document.querySelectorAll(".f-code-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
   codeRows(["B12", "B17", "B23"]);
+  // Task 0: explicit zone choice, neither preselected. The device zone name
+  // comes from the browser; the server re-validates whatever arrives, so a
+  // model-supplied zone is never trusted here.
+  let noteZone: string | null = null;
+  const deviceZone = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    } catch {
+      return "UTC";
+    }
+  })();
+  const zoneValid = (z: string): boolean => {
+    if (/^[+-]\d{2}:?\d{2}$/.test(z)) return true;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: z }).format(0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const paintTz = (): void => {
+    (document.getElementById("f-tzrow") as HTMLElement).innerHTML =
+      `<label><input type="radio" name="f-tz" value="device" /> Device (${esc(deviceZone)})</label> ` +
+      `<label><input type="radio" name="f-tz" value="utc" /> UTC</label>` +
+      (noteZone === null ? "" : ` <label><input type="radio" name="f-tz" value="note" /> Note's zone (${esc(noteZone)})</label>`);
+  };
+  paintTz();
+  const selectedTz = (): string | null => {
+    const c = document.querySelector('input[name="f-tz"]:checked') as HTMLInputElement | null;
+    if (c === null) return null;
+    if (c.value === "device") return deviceZone;
+    if (c.value === "utc") return "UTC";
+    return noteZone;
+  };
   (document.getElementById("f-add") as HTMLButtonElement).onclick = () => {
     const v = codeValues();
     if (v.length >= 10) return;
@@ -164,10 +199,12 @@ function viewNew(el: HTMLElement): void {
       const codes = codeValues().map((c) => c.trim()).filter((c) => c !== "");
       if (codes.length < 1) throw new Error("need_one_code");
       const dlRaw = (document.getElementById("f-dl") as HTMLInputElement).value;
-      const dlMs = Date.parse(dlRaw);
-      if (!Number.isFinite(dlMs)) throw new Error("bad_deadline");
-      const dl = new Date(dlMs).toISOString();
-      const c = await calls.createMission(site, codes, dl, undefined, codeHeaders()) as { missionId: string; workerToken: string; reviewToken: string };
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dlRaw)) throw new Error("bad_deadline");
+      // Task 0: the raw wall time plus the explicit zone choice go to the
+      // server, which does the real wall-to-instant conversion.
+      const tz = selectedTz();
+      if (tz === null) throw new Error("need_timezone");
+      const c = await calls.createMission(site, codes, dlRaw.slice(0, 16), undefined, codeHeaders(), tz) as { missionId: string; workerToken: string; reviewToken: string };
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
       out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(shortId(c.missionId))} open.</p>
@@ -193,6 +230,8 @@ function viewNew(el: HTMLElement): void {
       const friendly = m.includes("requester_code_denied") ? wrongCodeMsg()
         : m.includes("note_unconfirmed") ? "Check the draft against the note photo and tick confirmation first."
         : m.includes("need_one_code") ? "Enter at least one expected code."
+        : (m.includes("need_timezone") || m.includes("timezone_required")) ? "Choose a time zone for the deadline."
+        : m.includes("bad_zone") ? "That time zone is not supported — pick device or UTC."
         : m;
       out.innerHTML = `<p class="err">${esc(friendly)}</p>`;
       goBtn.disabled = false;
@@ -216,7 +255,9 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel;
       codeRows(d.expectedCodes.slice(0, 10));
       (document.getElementById("f-dl") as HTMLInputElement).value = toLocalInput(new Date(d.deadline));
-      fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, then Create mission.</p>`;
+      noteZone = null;
+      document.querySelectorAll('input[name="f-tz"]').forEach((r) => { (r as HTMLInputElement).checked = false; });
+      fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, pick a time zone, then Create mission.</p>`;
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       fmsg.innerHTML = m.includes("model_http_")
@@ -268,13 +309,20 @@ function viewNew(el: HTMLElement): void {
       nprev.innerHTML = `<img src="${pu}" alt="delivery note preview" />`;
       (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel.value;
       codeRows(d.codes.map((c) => c.value).slice(0, 10));
-      (document.getElementById("f-dl") as HTMLInputElement).value = toLocalInput(new Date(d.deadline.value));
+      // Task 0: a zone-less draft deadline stays a wall time — never run it
+      // through the device zone. A validated model zone becomes a third,
+      // still unselected, choice; the server re-validates it at Create.
+      const dw = d.deadline.value;
+      (document.getElementById("f-dl") as HTMLInputElement).value =
+        /([zZ]|[+-]\d{2}:?\d{2}|[+-]\d{4})$/.test(dw) ? toLocalInput(new Date(dw)) : dw.slice(0, 16);
+      noteZone = d.timezone.value !== null && zoneValid(d.timezone.value) ? d.timezone.value : null;
+      paintTz();
       const snip = (label: string, s: string): string =>
         `<p class="muted">${esc(label)}: ${s === "" ? "source unknown" : `“${esc(s)}”`}</p>`;
       nfields.innerHTML = snip("Site", d.siteLabel.snippet)
         + d.codes.map((c, i) => snip(`Box ${i + 1}`, c.snippet)).join("")
         + snip("Deadline", d.deadline.snippet)
-        + `<p class="muted">Time zone: ${d.timezone.value === null ? "unknown — confirm it by hand" : esc(d.timezone.value)}</p>`
+        + `<p class="muted">Time zone: ${d.timezone.value === null ? "unknown — choose device or UTC below" : esc(d.timezone.value) + (noteZone === null ? " (not recognised — choose device or UTC below)" : " (listed below — select it to use it)")}</p>`
         + `<p class="muted">Snippets quote what the model read — check them against the photo yourself. Snippet agreement is not independent verification.</p>`;
       notePending = true;
       confirmBox.checked = false;

@@ -143,11 +143,12 @@ export async function evidenceBlob(missionId: string, uploadId: string, token: s
 }
 
 export const calls = {
-  createMission: (siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn, headers?: Record<string, string>) =>
+  createMission: (siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn, headers?: Record<string, string>, timezone?: string) =>
     post("mission-create", {
       siteLabel,
       expectedItems: labels.map((expectedLabel, i) => ({ itemId: `box${i + 1}`, expectedLabel })),
       deadline,
+      ...(timezone === undefined ? {} : { timezone }),
     }, fetchFn, headers),
   consent: (missionId: string, token: string, workerId: string, fetchFn?: FetchFn) =>
     post("consent-accept", { missionId, token, workerId, consentVersion: "v1" }, fetchFn),

@@ -6,6 +6,7 @@
 import { blobsScope, ctx, json, secret } from "../lib/_ctx.mts";
 import { mintLink } from "../../shared/links.ts";
 import { requesterIdentity } from "../../shared/identity.ts";
+import { resolveInstant } from "../../shared/timezone.ts";
 import { boxId, CODE_RE, MAX_ITEMS, MIN_ITEMS } from "../../shared/missions.ts";
 import type { ExpectedItem } from "../../shared/types.ts";
 
@@ -13,7 +14,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "method" });
   const id = requesterIdentity(process.env, req.headers.get("x-requester-code"));
   if (!id.ok) return json(id.error === "requester_code_unset" ? 503 : 403, { error: id.error });
-  const body = (await req.json()) as { siteLabel?: string; expectedItems?: ExpectedItem[]; expectedLabels?: string[]; deadline?: string };
+  const body = (await req.json()) as { siteLabel?: string; expectedItems?: ExpectedItem[]; expectedLabels?: string[]; deadline?: string; timezone?: string };
   if (typeof body.siteLabel !== "string" || typeof body.deadline !== "string") {
     return json(400, { error: "bad_input" });
   }
@@ -28,7 +29,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const siteLabel = body.siteLabel as string;
   const expectedItems = (codes as string[]).map((expectedLabel, i) => ({ itemId: boxId(i), expectedLabel }));
-  const deadline = body.deadline as string;
+  // Task 0: an explicit timezone choice drives a real server-side
+  // wall-to-instant conversion. Absent means the legacy path (the deadline
+  // is stored exactly as sent); a wall time WITH a zone is converted, and
+  // unknown zones, invalid dates, and DST gaps/folds are refused.
+  let deadline = body.deadline as string;
+  if (typeof body.timezone === "string" && body.timezone !== "") {
+    const r = resolveInstant(deadline, body.timezone);
+    if (!r.ok) return json(400, { error: r.error });
+    deadline = r.instant;
+  }
   const created = await blobsScope(null, {}, () => {
     const { missions } = ctx();
     return missions.create(siteLabel, expectedItems, deadline);
