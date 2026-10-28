@@ -1,6 +1,6 @@
 // B5/5X29: deterministic REAL PNG fixtures (self-contained encoder, no deps).
 // clear-B17 (clean) / soft-B17 (legible despite blur) / unreadable-B17
-// (degraded past reading; 4ofX+5ofX must each view+confirm) / covered-B71.
+// (degraded past reading; needs independent visual confirmation) / covered-B71.
 // Synthetic only. 5x7 bitmap font glyphs. Verifies magic, dims, IDAT
 // integrity (+ glyph pixels except unreadable-by-design); prints sharpness
 // metrics for threshold calibration; writes manifest with full SHA-256.

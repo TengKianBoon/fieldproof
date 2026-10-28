@@ -39,3 +39,6 @@ app/.local-fixtures/
 
 # S2d (5X44): Netlify CLI state (site ID) must never reach git.
 .netlify/
+
+# S11: local recovery backups (e.g. stray-ref bytes) stay out of git.
+.recovery/
