@@ -219,7 +219,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `.card{border:1px solid #999;border-radius:.5rem;padding:.75rem;margin:.6rem 0;page-break-inside:avoid}`
     + `img{width:100%}.muted{color:#555;font-size:.9rem}.err{color:#a00;font-weight:600}`
     + `.hash{word-break:break-all;font-size:.8rem}`
-    + `.box{position:relative}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#fff;color:#111;border:1px solid #111;font-size:.8rem;print-color-adjust:exact;-webkit-print-color-adjust:exact}`
+    + `.box{position:relative;display:inline-block;max-width:100%}.box img{display:block}@media print{.card img{max-height:8cm;width:auto;max-width:100%;object-fit:contain}.card{break-inside:avoid}}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#fff;color:#111;border:1px solid #111;font-size:.8rem;print-color-adjust:exact;-webkit-print-color-adjust:exact}`
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
