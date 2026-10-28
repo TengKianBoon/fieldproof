@@ -56,6 +56,20 @@ describe("S6 requester access code", () => {
     }
   });
 
+  it("trims pasted whitespace around a valid code; wrong stays 403", async () => {
+    save();
+    process.env.FIELDPROOF_ENV = "production";
+    process.env.REQUESTER_CODE = "correct-horse";
+    process.env.FIELDPROOF_SECRET = "test-secret-value";
+    process.env.BLOBS_STORE = "memory";
+    try {
+      assert.equal((await create({ "x-requester-code": "  correct-horse\n" })).status, 200);
+      assert.equal((await create({ "x-requester-code": "wrong-horse" })).status, 403);
+    } finally {
+      restore();
+    }
+  });
+
   it("fails closed with 503 when production has no code set", async () => {
     save();
     process.env.FIELDPROOF_ENV = "production";

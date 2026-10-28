@@ -198,7 +198,7 @@ mkdirSync(outDir, { recursive: true });
 const specs: Array<[string, string, (px: Uint8Array) => Uint8Array | void, string, boolean]> = [
   ["clear-B17.png", "B17", (px) => { speckle(px, 7, 400); return px; }, "clear LOT B17, light speckle", true],
   ["soft-B17.png", "B17", (px) => blur(blur(px)), "legible despite blur (ex blurred-B17, same bytes)", true],
-  ["unreadable-B17.png", "B17", (px) => destroy(px), "degraded past reading; needs 4ofX+5ofX visual confirm", false],
+  ["unreadable-B17.png", "B17", (px) => destroy(px), "degraded past reading; needs independent visual confirmation", false],
   ["covered-B71.png", "B71", (px) => { cover(px); return px; }, "partly covered LOT B71 (middle bar)", true],
 ];
 

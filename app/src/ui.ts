@@ -106,6 +106,13 @@ function codeHeaders(): Record<string, string> {
   return v === "" ? {} : { "x-requester-code": v };
 }
 
+// S11a wrong-code message: client-entered character count only — never the
+// expected length or either value.
+function wrongCodeMsg(): string {
+  const n = accessCode().length;
+  return `Wrong access code (${n} character${n === 1 ? "" : "s"} entered)`;
+}
+
 function viewNew(el: HTMLElement): void {
   const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
   el.innerHTML = `<h1>New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
@@ -115,11 +122,17 @@ function viewNew(el: HTMLElement): void {
     <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
     <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
+    <label><input id="f-show" type="checkbox" style="width:auto" /> Show code</label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
     <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
   try {
     (document.getElementById("f-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+    // Show-code toggle: unchecked (masked) every render, never persisted.
+    (document.getElementById("f-show") as HTMLInputElement).onchange = (ev) => {
+      (document.getElementById("f-code") as HTMLInputElement).type =
+        (ev.target as HTMLInputElement).checked ? "text" : "password";
+    };
     const lastRaw = sessionStorage.getItem("fp-last");
     if (lastRaw !== null) {
       const last = JSON.parse(lastRaw) as { w?: unknown; r?: unknown };
@@ -168,7 +181,7 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-again") as HTMLButtonElement).onclick = () => viewNew(el);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
-      out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? "Wrong access code" : m)}</p>`;
+      out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? wrongCodeMsg() : m)}</p>`;
       goBtn.disabled = false;
     }
   };
@@ -184,7 +197,7 @@ function viewNew(el: HTMLElement): void {
       const j = (await r.json()) as { draft?: { siteLabel: string; expectedCodes: string[]; deadline: string }; error?: string };
       if (!r.ok) {
         const code = String(j.error ?? r.status);
-        throw new Error(code.includes("requester_code_denied") ? "Wrong access code" : code);
+        throw new Error(code.includes("requester_code_denied") ? wrongCodeMsg() : code);
       }
       const d = j.draft as { siteLabel: string; expectedCodes: string[]; deadline: string };
       (document.getElementById("f-site") as HTMLInputElement).value = d.siteLabel;

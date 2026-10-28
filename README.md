@@ -38,6 +38,8 @@ Each request runs its existing logic inside one per-request transact over Blobs 
 Prerequisites: Node 24, npm.
 
 ```sh
+node app/scripts/gen-fixtures.mts   # synthetic dev + held-out fixtures
+node app/scripts/gen-images.mts     # synthetic label PNGs (self-verify PASS)
 npm test            # full suite (node --test)
 npm --prefix app run build   # phone UI into app/dist
 ```

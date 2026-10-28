@@ -28,8 +28,12 @@ export function requesterIdentity(
   }
   const expected = env.REQUESTER_CODE;
   if (typeof expected !== "string" || expected === "") return fail("requester_code_unset");
-  if (typeof code !== "string" || code === "") return fail("requester_code_denied");
-  const a = Buffer.from(code);
+  // S11a: forgive pasted whitespace on the presented code only. The expected
+  // secret is used exactly as configured; neither value is ever logged.
+  if (typeof code !== "string") return fail("requester_code_denied");
+  const presented = code.trim();
+  if (presented === "") return fail("requester_code_denied");
+  const a = Buffer.from(presented);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return fail("requester_code_denied");
   return ok({ kind: "verified", subject: "requester" });
