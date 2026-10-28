@@ -287,6 +287,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       observed: Record<string, {
         observedLabel: string | null; readability: string; state: string; uploadId: string | null;
         labelBox?: { x1: number; y1: number; x2: number; y2: number; confidence: number } | null;
+        samStatus?: { uploadId: string; status: string } | null;
       }>;
     };
   };
@@ -321,9 +322,14 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         const u = URL.createObjectURL(blob);
         revoked.push(u);
         const b = o.labelBox ?? null;
+        const sam = o.samStatus?.status ?? "";
         slot.innerHTML = b !== null
           ? `<div style="position:relative"><img src="${u}" alt="evidence ${esc(e.itemId)}" style="width:100%" /><div style="position:absolute;left:${b.x1 * 100}%;top:${b.y1 * 100}%;width:${Math.max(0, b.x2 - b.x1) * 100}%;height:${Math.max(0, b.y2 - b.y1) * 100}%;border:3px solid #0a0;box-sizing:border-box"><span style="background:#0a0;color:#fff;font-size:.8rem">AI-located label</span></div></div>`
-          : `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
+          : sam === "none"
+            ? `<img src="${u}" alt="evidence ${esc(e.itemId)}" /><p class="muted">AI box: none found</p>`
+            : sam.startsWith("sam:")
+              ? `<img src="${u}" alt="evidence ${esc(e.itemId)}" /><p class="muted">AI box unavailable (${esc(sam)})</p>`
+              : `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
       } catch {
         slot.innerHTML = `<p class="err">Photo unavailable.</p>`;
       }

@@ -26,6 +26,10 @@ export interface ObservedItem {
   serverHash: string | null;
   // S5: best SAM/mock label box, normalised 0-1. Absent until attached.
   labelBox?: { x1: number; y1: number; x2: number; y2: number; confidence: number; uploadId: string; source: string } | null;
+  // S8: per-item SAM outcome, persisted idempotently alongside labelBox.
+  // "box" = a box is attached; "none" = SAM completed with zero boxes;
+  // "sam:…" = sanitised failure diag. Absent until the SAM attempt resolves.
+  samStatus?: { uploadId: string; status: string } | null;
 }
 
 export interface Mission {

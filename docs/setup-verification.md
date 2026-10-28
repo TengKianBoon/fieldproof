@@ -177,3 +177,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — 5X63 round 1 (one commit)
 - Round-1 remedy: Create stays locked after success until Start another mission; Finish rerenders decided state so Download appears (flash kept); deadline default now+24h local + agent ISO via Date to local input; sanitised diag code shown below friendly reader/agent text, no raw/key/user text. Evidence: tsc clean, 108/108, offline build OK.
+
+## Addendum 2026-10-28 — S8 SAM diagnostics + MIME (one commit)
+- Per-item samStatus persisted idempotently (box/none/sam:<http>[:type:code]/sam:network/sam:bad_response/sam:skipped:<reason>); reviewer keeps green box else muted none/unavailable; byte-sniffed MIME (FF D8 jpeg, 89 50 png, else jpeg) for Spark+SAM; SAM_CONCEPT env (default label, letters/spaces max40); CSS [hidden] wins. Evidence: tsc clean, 111/111, offline build OK (8 modules).

@@ -6,6 +6,7 @@
 // from the runtime environment on the enabled live path (process.env);
 // this module never reads .env files. Tests use a mocked fetch only.
 import { costOf, parseResponse, toLabel, planningCapPerCall, type Usage } from "./spikecost.ts";
+import { detectImageMime } from "./samBoxes.ts";
 import { ok, fail, type Result } from "./types.ts";
 import type { ReadResult } from "./labels.ts";
 import type { Ledger } from "./ledger.ts";
@@ -28,7 +29,7 @@ export function readerMode(env: Record<string, string | undefined> = process.env
 
 // Hardcoded R004 request shape: nothing here is caller-overridable, so no
 // caller can redirect the model, the store flag, or the schema.
-export function buildSparkRequest(imageB64: string): Record<string, unknown> {
+export function buildSparkRequest(imageB64: string, mime: "image/jpeg" | "image/png" = "image/jpeg"): Record<string, unknown> {
   return {
     model: SPARK_MODEL,
     store: false,
@@ -39,7 +40,7 @@ export function buildSparkRequest(imageB64: string): Record<string, unknown> {
       role: "user",
       content: [
         { type: "input_text", text: SPARK_PROMPT },
-        { type: "input_image", image_url: `data:image/png;base64,${imageB64}`, detail: "high" },
+        { type: "input_image", image_url: `data:${mime};base64,${imageB64}`, detail: "high" },
       ],
     }],
     text: {
@@ -121,7 +122,7 @@ export async function sparkRead(
       method: "POST",
       signal: AbortSignal.timeout(deps.timeoutMs ?? SPARK_TIMEOUT_MS),
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify(buildSparkRequest(b64)),
+      body: JSON.stringify(buildSparkRequest(b64, detectImageMime(imageBytes))),
     });
   } catch {
     settleMax();

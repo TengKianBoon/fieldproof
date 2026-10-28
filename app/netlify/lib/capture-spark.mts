@@ -12,8 +12,9 @@ import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 import { buildSparkRequest, SPARK_ENDPOINT, SPARK_TIMEOUT_MS } from "../../shared/sparkReader.ts";
 import { costOf, parseResponse, planningCapPerCall, toLabel, validReading, type Usage } from "../../shared/spikecost.ts";
 import {
-  attachBox, buildSamRequest, parseSamBoxes, parseSamResponse,
-  SAM_ENDPOINT, SAM_PRICE_MILLICENTS, SAM_TIMEOUT_MS, type SamBox,
+  attachBox, attachSamStatus, buildSamRequest, detectImageMime, parseSamBoxes,
+  parseSamResponse, samConcept, SAM_ENDPOINT, SAM_PRICE_MILLICENTS,
+  SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
 import { metaDiag } from "../../shared/agentDraft.ts";
 import { fail } from "../../shared/types.ts";
@@ -110,7 +111,7 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
       method: "POST",
       signal: AbortSignal.timeout(SPARK_TIMEOUT_MS),
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify(buildSparkRequest(Buffer.from(phase1.bytes).toString("base64"))),
+      body: JSON.stringify(buildSparkRequest(Buffer.from(phase1.bytes).toString("base64"), detectImageMime(phase1.bytes))),
     });
   } catch {
     actual = max;
@@ -188,15 +189,20 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
   }
 }
 
-// S5 SAM attach: reserve in its own transact, exactly one fetch outside every
-// retry loop, then settle (flat 250) plus idempotent attach. Best effort.
+// S5 SAM attach (S8: plus a persisted per-item outcome): reserve in its own
+// transact, exactly one fetch outside every retry loop, then settle (flat
+// 250) plus idempotent attach. Best effort: every path records a samStatus
+// ("box", "none", or a sanitised "sam:…" diag) without changing the capture.
 async function samBoxForCapture(missionId: string, itemId: string, uploadId: string, bytes: Uint8Array): Promise<void> {
   const key = process.env.META_API_KEY;
-  if (typeof key !== "string" || key === "") return;
+  if (typeof key !== "string" || key === "") {
+    await recordSamOutcome(missionId, itemId, uploadId, "sam:skipped:no_key");
+    return;
+  }
   const reqId = `sam:${uploadId}`;
   let day: string;
   try {
-    const r = await blobsScope(missionId, {}, () => {
+    const r: { error: string } | { done: boolean } | { day: string } = await blobsScope(missionId, {}, () => {
       const l = ctx().ledger;
       const rs = l.reserve("model", missionId, reqId, "sam-box", SAM_PRICE_MILLICENTS);
       if (!rs.ok) return { error: rs.error as string };
@@ -204,38 +210,75 @@ async function samBoxForCapture(missionId: string, itemId: string, uploadId: str
       if (e.status !== "reserved") return { done: true as const };
       return { day: e.day };
     });
-    if ("error" in r || "done" in r) return;
+    if ("done" in r) return;
+    if ("error" in r) {
+      const reason = /^[A-Za-z0-9_-]{1,64}$/.test(r.error) ? r.error : "ledger";
+      await recordSamOutcome(missionId, itemId, uploadId, `sam:skipped:${reason}`);
+      return;
+    }
     day = r.day;
   } catch {
     return;
   }
   let box: SamBox | null = null;
+  let status: string;
   try {
     const res = await fetch(SAM_ENDPOINT, {
       method: "POST",
       signal: AbortSignal.timeout(SAM_TIMEOUT_MS),
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify(buildSamRequest(Buffer.from(bytes).toString("base64"))),
+      body: JSON.stringify(buildSamRequest(
+        Buffer.from(bytes).toString("base64"), detectImageMime(bytes), samConcept())),
     });
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(await res.text()) as unknown;
-    } catch {
-      parsed = null;
+    if (!res.ok) {
+      let dt = "";
+      try {
+        dt = metaDiag(await res.text());
+      } catch {
+        dt = "";
+      }
+      status = `sam:${res.status}${dt}`;
+    } else {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(await res.text()) as unknown;
+      } catch {
+        parsed = null;
+      }
+      const pr = parsed === null ? { ok: false as const, error: "bad_response" } : parseSamResponse(parsed);
+      if (!pr.ok || pr.status !== "completed") {
+        // Malformed or non-completed SAM result: no usable boxes.
+        status = "sam:bad_response";
+      } else {
+        box = parseSamBoxes(pr.text);
+        status = box === null ? "none" : "box";
+      }
     }
-    const pr = parsed === null ? { ok: false as const, error: "bad_response" } : parseSamResponse(parsed);
-    if (pr.ok && pr.status === "completed") box = parseSamBoxes(pr.text);
   } catch {
-    box = null;
+    status = "sam:network";
   }
   try {
     await blobsScope(missionId, { extraKeys: [`ledger:${day}`, `mission:${missionId}`] }, () => {
       const c = ctx();
       c.ledger.settleHandle({ day, caller: "model", missionId, key: reqId }, SAM_PRICE_MILLICENTS);
       if (box !== null) attachBox(c.missions, missionId, itemId, uploadId, box, "sam");
+      else attachSamStatus(c.missions, missionId, itemId, uploadId, status);
       return null;
     });
   } catch {
     // Settle/attach lost its race; the capture itself already stands.
+  }
+}
+
+// Best-effort SAM outcome write in its own transact. Never throws and never
+// changes the capture result; the reviewer reads this when no box is present.
+async function recordSamOutcome(missionId: string, itemId: string, uploadId: string, status: string): Promise<void> {
+  try {
+    await blobsScope(missionId, { extraKeys: [`mission:${missionId}`] }, () => {
+      attachSamStatus(ctx().missions, missionId, itemId, uploadId, status);
+      return null;
+    });
+  } catch {
+    // Best effort only.
   }
 }

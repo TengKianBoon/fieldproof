@@ -17,3 +17,6 @@ label { display: block; margin: 0.6rem 0 0.2rem; font-weight: 600; }
 pre { white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; font-size: 0.8rem; }
 .err { color: #a00; font-weight: 600; }
 .ok { color: #070; font-weight: 600; }
+/* Author display rules (e.g. .row flex) otherwise override the hidden
+   attribute; hidden must always win so success states can hide controls. */
+[hidden] { display: none !important; }

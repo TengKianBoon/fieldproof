@@ -14,6 +14,23 @@ export const SAM_PROMPT = "label";
 export const SAM_TIMEOUT_MS = 120_000;
 export const SAM_PRICE_MILLICENTS = 250;
 
+// S8: MIME sniff for model image inputs. JPEG magic FF D8, PNG magic 89 50;
+// anything else rides as JPEG (phone photos are JPEG; never octet-stream to
+// the model).
+export function detectImageMime(bytes: Uint8Array): "image/jpeg" | "image/png" {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) return "image/jpeg";
+  if (bytes.length >= 2 && bytes[0] === 0x89 && bytes[1] === 0x50) return "image/png";
+  return "image/jpeg";
+}
+
+// S8: SAM label concept from SAM_CONCEPT (default "label"). Letters and
+// spaces only, max 40 chars; anything else falls back to the default so a
+// bad setting can never block a capture.
+export function samConcept(env: Record<string, string | undefined> = process.env): string {
+  const raw = (env.SAM_CONCEPT ?? SAM_PROMPT).trim();
+  return /^[A-Za-z ]{1,40}$/.test(raw) ? raw : SAM_PROMPT;
+}
+
 // READER=mock stand-in: a fixed, clearly-labelled box (never a real locate).
 export const MOCK_BOX = { x1: 0.3, y1: 0.35, x2: 0.7, y2: 0.65, confidence: 1 };
 
@@ -63,7 +80,11 @@ export function parseSamResponse(parsed: unknown): { ok: true; status: string; t
   return { ok: true, status: typeof p.status === "string" ? p.status : "unknown", text: parts.join("") };
 }
 
-export function buildSamRequest(imageB64: string): Record<string, unknown> {
+export function buildSamRequest(
+  imageB64: string,
+  mime: "image/jpeg" | "image/png" = "image/jpeg",
+  concept: string = samConcept(),
+): Record<string, unknown> {
   return {
     model: SAM_MODEL,
     store: false,
@@ -72,8 +93,8 @@ export function buildSamRequest(imageB64: string): Record<string, unknown> {
       type: "message",
       role: "user",
       content: [
-        { type: "input_text", text: SAM_PROMPT },
-        { type: "input_image", image_url: `data:image/png;base64,${imageB64}`, detail: "high" },
+        { type: "input_text", text: concept },
+        { type: "input_image", image_url: `data:${mime};base64,${imageB64}`, detail: "high" },
       ],
     }],
     metadata: { include_confidence: "true", mask_encoding: "one_bit" },
@@ -112,7 +133,7 @@ export async function samRead(
       method: "POST",
       signal: AbortSignal.timeout(deps.timeoutMs ?? SAM_TIMEOUT_MS),
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify(buildSamRequest(b64)),
+      body: JSON.stringify(buildSamRequest(b64, detectImageMime(imageBytes))),
     });
   } catch {
     ledger.settle(args.caller, args.missionId, args.requestId, SAM_PRICE_MILLICENTS);
@@ -134,9 +155,11 @@ export async function samRead(
   return { ok: true, box: parseSamBoxes(pr.text), uncertain: false, status: pr.status };
 }
 
-// Idempotent box attach for one observation: sets the box once per uploadId.
-// Safe to run inside a transact (bounded retries converge: a re-run sees the
-// recorded uploadId and returns true without writing).
+// Idempotent box attach for one observation: sets the box once per uploadId,
+// plus the "box" SAM outcome alongside it (the mock stand-in records "box"
+// too; its source field distinguishes it). Safe to run inside a transact
+// (bounded retries converge: a re-run sees the recorded uploadId and returns
+// true without writing).
 export function attachBox(
   ms: Missions,
   missionId: string,
@@ -151,8 +174,33 @@ export function attachBox(
     if (m === null) return false;
     const o = m.observed[itemId];
     if (o === undefined) return false;
-    if (o.uploadId === uploadId && o.labelBox?.uploadId === uploadId) return true;
+    if (o.uploadId === uploadId && o.labelBox?.uploadId === uploadId && o.samStatus?.uploadId === uploadId) return true;
     o.labelBox = { ...box, uploadId, source };
+    o.samStatus = { uploadId, status: "box" };
+    if (ms.saveExpecting(m, m.version)) return true;
+  }
+  return false;
+}
+
+// Idempotent SAM-outcome record for one observation, without touching the
+// box or the capture result: stores samStatus once per uploadId ("none" for
+// completed zero boxes, "sam:…" sanitised diags otherwise). Converges under
+// bounded retries like attachBox.
+export function attachSamStatus(
+  ms: Missions,
+  missionId: string,
+  itemId: string,
+  uploadId: string,
+  status: string,
+  maxAttempts: number = 8,
+): boolean {
+  for (let i = 0; i < maxAttempts; i++) {
+    const m = ms.load(missionId);
+    if (m === null) return false;
+    const o = m.observed[itemId];
+    if (o === undefined || o.uploadId !== uploadId) return false;
+    if (o.samStatus?.uploadId === uploadId) return true;
+    o.samStatus = { uploadId, status };
     if (ms.saveExpecting(m, m.version)) return true;
   }
   return false;

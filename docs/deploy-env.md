@@ -10,6 +10,7 @@ S2d approval.
 | BLOBS_STORE | Which state backend endpoints use. `blobs` runs every request inside a per-request Blobs transact; anything else is dev/test only. | `blobs` |
 | READER | Label-reading path. `spark` calls the model once per capture (reserve-max/settle-once); `mock` keeps the PNG stand-in. | `spark` |
 | META_API_KEY | Model key, server-side only. Fresh key per T6 rotation; the old key is deleted after S3. | New key in Netlify UI only |
+| SAM_CONCEPT | SAM label prompt noun phrase (letters/spaces only, max 40 chars; anything else falls back to `label`, never blocks capture). | `label` |
 | FIELDPROOF_SECRET | Signs mission links (requester/worker/reviewer). | Random value in Netlify UI only |
 | REQUESTER_CODE | Access code for mission-create and agent-draft in production (header `x-requester-code`, constant-time check). | Secret in Netlify UI only; TKB types it once on the #/new page |
 | LEDGER_CEILING_USD | Model-spend ceiling per UTC day. Missing or invalid fails closed (US$2 demo default only in non-production code). | `2` |
