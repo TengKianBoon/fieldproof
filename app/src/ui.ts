@@ -22,6 +22,14 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 12)}…` : id;
 }
 
+// S9 plain-English mission states for worker/reviewer screens (wording only;
+// every gate still runs on the raw state).
+function plainState(state: string): string {
+  if (state === "in_review") return "With the reviewer";
+  if (state === "decided") return "Review finished";
+  return state;
+}
+
 function diagLine(e: unknown): string {
   const d = (e as { diag?: unknown }).diag;
   return typeof d === "string" && /^[A-Za-z0-9:_. -]{1,80}$/.test(d) ? `<p class="muted">${esc(d)}</p>` : "";
@@ -82,7 +90,7 @@ function codeHeaders(): Record<string, string> {
 
 function viewNew(el: HTMLElement): void {
   const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
-  el.innerHTML = `<h1>New collection</h1><div id="f-last"></div>
+  el.innerHTML = `<h1>New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
     <label>Expected code, box 1<input id="f-c1" type="text" value="B12" /></label>
     <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
@@ -189,7 +197,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
     const note = flash;
     flash = "";
-    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(m.state)} — capture is closed.</p>`;
+    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(plainState(m.state))} — capture is closed.</p>`;
     return;
   }
   if (m.state !== "capturing") {
@@ -309,7 +317,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   }
   const note = flash;
   flash = "";
-  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(m.state)}</p>
+  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(plainState(m.state))}</p>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button><div id="r-out"></div>`;

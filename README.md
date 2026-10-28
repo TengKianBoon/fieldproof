@@ -4,10 +4,12 @@ FieldProof is a field-evidence product for a remote requester and an on-site wor
 
 Demo flow: one supplier collection, three labelled boxes (B12, B17, B23) against a synthetic delivery note. An unreadable label triggers a targeted close-up while the worker is still on site (at most two, then inconclusive). An expected B17 that reads as B71 becomes an evidence-linked discrepancy a human must review — the app never calls insufficient evidence a match.
 
+Designed for 180Climate's fieldworks network.
+
 ## How Meta models are used
 
 - **muse-spark-1.3** reads each captured label through the Responses API with a strict JSON schema (`readability`, `lot_code`), `store: false`, and no expected values in the prompt. Unknown content is instructed to return null rather than a guess — a reader instruction, not a guarantee.
-- **sam-3.1** locates the label box on each stored photo (boxes only, best confidence, normalised 0–1). The reviewer sees it as an "AI-located label" rectangle.
+- **sam-3.1** locates the label box on each stored photo (boxes only, best confidence, normalised 0–1). The reviewer sees it as an "AI-located label" rectangle when a box is present; otherwise the reviewer sees "none found" or an "unavailable" note with the per-item diagnostic.
 - The **Spark function tool** `create_field_mission` drafts a mission from the requester's plain-English description (strict schema, forced tool choice). The agent only drafts: a human confirms and edits the fields before anything is created.
 - Every model call reserves its maximum cost from a daily ledger first and settles once afterwards; timed-out or uncertain calls settle at the reserved maximum.
 
@@ -48,8 +50,8 @@ Repo started 27 Oct 2026. Shipped so far: the mocked full mission loop (consent,
 
 ## Honest limits
 
-- This is a private demo, not a production release.
-- Photos and mission records are stored in US Blobs; no real pilot data has been collected.
-- Revocation does not persist across restarts yet.
-- Byte hashes prove integrity in transit and storage, not physical truth on site.
-- Live model behaviour (real photos, real calls) is proven by the phone test, not by the mocked suite.
+- This is a private demo, not a production release. No pilot has run; no real customer data has been collected.
+- Photos and mission records are stored in US Blobs.
+- Revocation is per-instance memory and does not survive a restart: a revoked link may still work on another instance.
+- The evidence pack is unsigned JSON. Byte hashes prove the bytes are unchanged, not that a photo shows the real box.
+- Live evidence so far (one phone mission): Create, three uploaded photos read by Spark as B12/B17/B23 matched, send for review, reviewer decisions, Finish, and JSON export all passed. SAM green boxes failed that pass (boxes absent, no diagnostics); the per-item S8 diagnostics are deployed but not yet live-verified — the follow-up smoke was blocked at Create by "Wrong access code", with no model calls. Blur/close-up, intentional mismatch, and agent drafts have not been evidenced live and are not claimed here.

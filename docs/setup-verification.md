@@ -180,3 +180,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — S8 SAM diagnostics + MIME (one commit)
 - Per-item samStatus persisted idempotently (box/none/sam:<http>[:type:code]/sam:network/sam:bad_response/sam:skipped:<reason>); reviewer keeps green box else muted none/unavailable; byte-sniffed MIME (FF D8 jpeg, 89 50 png, else jpeg) for Spark+SAM; SAM_CONCEPT env (default label, letters/spaces max40); CSS [hidden] wins. Evidence: tsc clean, 111/111, offline build OK (8 modules).
+
+## Addendum 2026-10-28 — S9 wording/docs (one commit)
+- Plain-English mission states (With the reviewer / Review finished, wording only) + one How-it-works line on New collection; README gains the D35 line, the SAM box-present hedge, and honest live-evidence limits (5X65 phone pass listed; SAM boxes failed; S8 diagnostics live-unverified; blur/mismatch/agent unevidenced; unsigned pack; per-instance revocation). Evidence: tsc clean, 111/111, offline build OK.
