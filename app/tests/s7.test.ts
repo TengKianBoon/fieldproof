@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { ctx } from "../netlify/lib/_ctx.mts";
 import { sha256Hex } from "../shared/hash.ts";
+import { agentDraft } from "../shared/agentDraft.ts";
+import { Ledger } from "../shared/ledger.ts";
+import { MemoryStore } from "../shared/store.ts";
 
 process.env.FIELDPROOF_DATA_DIR = ":memory:";
 
@@ -98,6 +101,19 @@ describe("post-test fixes", () => {
     } finally {
       restore();
     }
+  });
+
+  it("reports a sanitised model_http error on agent non-OK", async () => {
+    const errBody = JSON.stringify({ error: { type: "server_error", code: "overloaded", message: "user secret text" } });
+    const fetchFn = (async () => new Response(errBody, { status: 500 })) as unknown as typeof fetch;
+    const ledger = new Ledger(new MemoryStore(), 200_000);
+    const out = await agentDraft("Verify lots", ledger, { caller: "agent", missionId: "drafts", requestId: "s7-agent-500" }, { key: "k", fetchFn });
+    assert.equal(out.ok, false);
+    if (!out.ok) {
+      assert.ok(out.error.includes("model_http_500:server_error:overloaded"), out.error);
+      assert.equal(out.error.includes("user secret"), false);
+    }
+    assert.equal(ledger.spent(), 1950);
   });
 
   it("rejects a reviewer decision before review starts", async () => {

@@ -18,6 +18,12 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function shortId(id: string): string {
+  return id.length > 12 ? `${id.slice(0, 12)}…` : id;
+}
+
+let flash = "";
+
 function errBox(e: unknown): string {
   return `<p class="err">${esc(e instanceof Error ? e.message : String(e))}</p>`;
 }
@@ -65,38 +71,69 @@ function codeHeaders(): Record<string, string> {
 }
 
 function viewNew(el: HTMLElement): void {
-  el.innerHTML = `<h1>New collection</h1>
+  el.innerHTML = `<h1>New collection</h1><div id="f-last"></div>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
     <label>Expected code, box 1<input id="f-c1" type="text" value="B12" /></label>
     <label>Expected code, box 2<input id="f-c2" type="text" value="B17" /></label>
     <label>Expected code, box 3<input id="f-c3" type="text" value="B23" /></label>
-    <label>Deadline<input id="f-dl" type="text" value="2026-10-28T18:00:00Z" /></label>
+    <label>Deadline<input id="f-dl" type="datetime-local" value="2026-10-28T18:00" /></label>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
     <label>Describe the check<textarea id="f-desc" rows="3" style="width:100%;box-sizing:border-box" placeholder="Verify lots B12 and B17 at Supplier dock A by Friday 6pm"></textarea></label>
     <button id="f-draft">Draft from description</button><div id="f-dmsg"></div>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
   try {
     (document.getElementById("f-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+    const lastRaw = sessionStorage.getItem("fp-last");
+    if (lastRaw !== null) {
+      const last = JSON.parse(lastRaw) as { w?: unknown; r?: unknown };
+      if (typeof last.w === "string" && typeof last.r === "string" && last.w !== "" && last.r !== "") {
+        (document.getElementById("f-last") as HTMLElement).innerHTML =
+          `<div class="card links"><p class="muted">Last mission links on this device:</p>` +
+          `<p>Worker:</p><a href="${esc(last.w)}">${esc(last.w)}</a>` +
+          `<p>Reviewer:</p><a href="${esc(last.r)}">${esc(last.r)}</a></div>`;
+      }
+    }
   } catch {
-    // Private mode: start blank.
+    // Private mode: start blank, no recovery card.
   }
   (document.getElementById("f-go") as HTMLButtonElement).onclick = async () => {
     const out = document.getElementById("f-out") as HTMLElement;
+    const goBtn = document.getElementById("f-go") as HTMLButtonElement;
+    if (goBtn.disabled) return;
+    goBtn.disabled = true;
     try {
       const site = (document.getElementById("f-site") as HTMLInputElement).value;
       const codes = ["f-c1", "f-c2", "f-c3"].map((id) => (document.getElementById(id) as HTMLInputElement).value);
-      const dl = (document.getElementById("f-dl") as HTMLInputElement).value;
+      const dlRaw = (document.getElementById("f-dl") as HTMLInputElement).value;
+      const dlMs = Date.parse(dlRaw);
+      if (!Number.isFinite(dlMs)) throw new Error("bad_deadline");
+      const dl = new Date(dlMs).toISOString();
       const c = await calls.createMission(site, codes, dl, undefined, codeHeaders()) as { missionId: string; workerToken: string; reviewToken: string };
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
-      out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(c.missionId)} open.</p>
+      out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(shortId(c.missionId))} open.</p>
         <p>Worker link:</p><a href="${esc(wl)}">${esc(wl)}</a><button id="f-cw">Copy worker link</button>
-        <p>Reviewer link:</p><a href="${esc(rl)}">${esc(rl)}</a><button id="f-cr">Copy reviewer link</button></div>`;
-      (document.getElementById("f-cw") as HTMLButtonElement).onclick = () => void copyText(wl);
-      (document.getElementById("f-cr") as HTMLButtonElement).onclick = () => void copyText(rl);
+        <p>Reviewer link:</p><a href="${esc(rl)}">${esc(rl)}</a><button id="f-cr">Copy reviewer link</button>
+        <button id="f-again">Start another mission</button></div>`;
+      const cw = document.getElementById("f-cw") as HTMLButtonElement;
+      const cr = document.getElementById("f-cr") as HTMLButtonElement;
+      cw.onclick = () => void copyText(wl).then(() => {
+        cw.textContent = "Copied";
+      });
+      cr.onclick = () => void copyText(rl).then(() => {
+        cr.textContent = "Copied";
+      });
+      try {
+        sessionStorage.setItem("fp-last", JSON.stringify({ w: wl, r: rl }));
+      } catch {
+        // Private mode: no recovery card.
+      }
+      (document.getElementById("f-again") as HTMLButtonElement).onclick = () => viewNew(el);
+      goBtn.disabled = false;
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       out.innerHTML = `<p class="err">${esc(m.includes("requester_code_denied") ? "Wrong access code" : m)}</p>`;
+      goBtn.disabled = false;
     }
   };
   (document.getElementById("f-draft") as HTMLButtonElement).onclick = async () => {
@@ -118,10 +155,13 @@ function viewNew(el: HTMLElement): void {
       for (let i = 0; i < 3; i++) {
         (document.getElementById(`f-c${i + 1}`) as HTMLInputElement).value = d.expectedCodes[i] ?? "";
       }
-      (document.getElementById("f-dl") as HTMLInputElement).value = d.deadline;
+      (document.getElementById("f-dl") as HTMLInputElement).value = d.deadline.slice(0, 16);
       fmsg.innerHTML = `<p class="ok">Draft: ${d.expectedCodes.map(esc).join(", ")} — check and edit, then Create mission.</p>`;
     } catch (e) {
-      fmsg.innerHTML = errBox(e);
+      const m = e instanceof Error ? e.message : String(e);
+      fmsg.innerHTML = m.includes("model_http_")
+        ? `<p class="err">AI draft unavailable - fill fields by hand (${esc(m)}).</p>`
+        : errBox(e);
     }
   };
 }
@@ -137,7 +177,9 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   };
   const m = s.mission;
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
-    el.innerHTML = `<h1>Collection</h1><p class="muted">Mission is ${esc(m.state)} — capture is closed.</p>`;
+    const note = flash;
+    flash = "";
+    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Mission is ${esc(m.state)} — capture is closed.</p>`;
     return;
   }
   if (m.state !== "capturing") {
@@ -147,11 +189,16 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       <button id="w-ok" class="primary">Accept and start</button></div><div id="w-out"></div>`;
     (document.getElementById("w-ok") as HTMLButtonElement).onclick = async () => {
       const out = document.getElementById("w-out") as HTMLElement;
+      const b = document.getElementById("w-ok") as HTMLButtonElement;
+      if (b.disabled) return;
+      b.disabled = true;
       try {
         await calls.consent(missionId, token, (document.getElementById("w-id") as HTMLInputElement).value);
         await render();
       } catch (e) {
         out.innerHTML = errBox(e);
+      } finally {
+        b.disabled = false;
       }
     };
     return;
@@ -162,7 +209,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       <button data-shoot="${esc(it.itemId)}" class="primary">Take photo</button>
       <div data-msg="${esc(it.itemId)}"></div></div>`).join("");
   const allDone = m.items.every((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive");
-  el.innerHTML = `<h1>Collection</h1><div id="w-items">${cards}</div>
+  el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1><div id="w-items">${cards}</div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
   for (const it of m.items) {
     const btn = el.querySelector(`[data-shoot="${it.itemId}"]`) as HTMLButtonElement;
@@ -179,6 +226,8 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
         const up = await uploadPhoto(missionId, token, it.itemId, attempt, `${it.itemId}-${attempt}`, small);
         const cap = await calls.capture(missionId, token, it.itemId, up.uploadId) as { state: string };
         if (cap.state === "unclear") {
+          const head = el.querySelector(`[data-item="${it.itemId}"] > p`) as HTMLElement | null;
+          if (head !== null) head.textContent = `${it.itemId} — unclear`;
           msg.innerHTML = `<p>Label unclear — take a close-up (at most 2), then it goes inconclusive.</p>
             <button data-cu="${esc(it.itemId)}">Request close-up</button>`;
           (msg.querySelector(`[data-cu="${it.itemId}"]`) as HTMLButtonElement).onclick = async () => {
@@ -199,17 +248,23 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       } catch (e) {
         const m = e instanceof Error ? e.message : String(e);
         msg.innerHTML = m.includes("reader_unavailable")
-          ? `<p class="err">Couldn't read the photo — check the light and take it again.</p>`
+          ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>`
           : errBox(e);
       }
     };
   }
   (document.getElementById("w-review") as HTMLButtonElement).onclick = async () => {
+    const b = document.getElementById("w-review") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
     try {
       await calls.toReview(missionId, token);
-      (document.getElementById("w-out") as HTMLElement).innerHTML = `<p class="ok">Sent for review.</p>`;
+      flash = "Sent for review.";
+      await render();
     } catch (e) {
       (document.getElementById("w-out") as HTMLElement).innerHTML = errBox(e);
+    } finally {
+      b.disabled = false;
     }
   };
 }
@@ -226,19 +281,25 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     };
   };
   const m = s.mission;
+  if (m.state !== "in_review" && m.state !== "decided") {
+    const photos = m.expected.filter((e) => m.observed[e.itemId]?.uploadId).length;
+    el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for worker — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
+    (document.getElementById("r-refresh") as HTMLButtonElement).onclick = () => void render();
+    return;
+  }
   const cards: string[] = [];
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     cards.push(`<div class="card" data-item="${esc(e.itemId)}">
       <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${esc(o.state)})</p>
       <div data-photo="${esc(e.itemId)}"><p class="muted">Loading photo…</p></div>
-      <div class="row"><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
-      <button data-inc="${esc(e.itemId)}">Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
+      <div class="row"${m.state === "in_review" ? "" : " hidden"}><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
+      <button data-inc="${esc(e.itemId)}"${m.state === "in_review" ? "" : " hidden"}>Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
   }
-  el.innerHTML = `<h1>Review</h1><p class="muted">Mission ${esc(missionId)} — ${esc(m.state)}</p>
+  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1><p class="muted">Mission is ${esc(m.state)}</p>
     <div id="r-items">${cards.join("")}</div>
-    <button id="r-finish" class="primary">Finish review</button>
-    <button id="r-dl">Download evidence pack (JSON)</button><div id="r-out"></div>`;
+    <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
+    <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button><div id="r-out"></div>`;
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     const slot = el.querySelector(`[data-photo="${e.itemId}"]`) as HTMLElement;
@@ -257,11 +318,22 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     } else slot.innerHTML = `<p class="muted">No photo yet.</p>`;
     const msg = el.querySelector(`[data-msg="${e.itemId}"]`) as HTMLElement;
     const decide = async (decision: string) => {
+      const btns = [`[data-yes="${e.itemId}"]`, `[data-no="${e.itemId}"]`, `[data-inc="${e.itemId}"]`]
+        .map((s) => el.querySelector(s) as HTMLButtonElement | null)
+        .filter((b): b is HTMLButtonElement => b !== null);
+      if (btns.some((b) => b.disabled)) return;
+      btns.forEach((b) => {
+        b.disabled = true;
+      });
       try {
         await calls.decide(missionId, token, e.itemId, decision);
         msg.innerHTML = `<p class="ok">Recorded: ${esc(decision)}.</p>`;
       } catch (err) {
         msg.innerHTML = errBox(err);
+      } finally {
+        btns.forEach((b) => {
+          b.disabled = false;
+        });
       }
     };
     (el.querySelector(`[data-yes="${e.itemId}"]`) as HTMLButtonElement).onclick = () => void decide("confirmed_match");
@@ -269,11 +341,16 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     (el.querySelector(`[data-inc="${e.itemId}"]`) as HTMLButtonElement).onclick = () => void decide("inconclusive");
   }
   (document.getElementById("r-finish") as HTMLButtonElement).onclick = async () => {
+    const b = document.getElementById("r-finish") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
     try {
       await calls.finishReview(missionId, token);
       (document.getElementById("r-out") as HTMLElement).innerHTML = `<p class="ok">Review finished.</p>`;
     } catch (e) {
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
+    } finally {
+      b.disabled = false;
     }
   };
   (document.getElementById("r-dl") as HTMLButtonElement).onclick = async () => {

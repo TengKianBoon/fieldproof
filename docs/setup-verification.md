@@ -169,5 +169,8 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 ## Addendum 2026-10-28 — Post-test fix slice (one commit)
 - Reader outage/non-OK now 502 reader_unavailable (+httpStatus), item untouched, conservative max settle; agent non-OK check + sanitizer landed but unwired (guard-blocked file); UI retry/locks/IDs/waiting/links/polish blocked same way; CSS full-width rule + README honesty fixes landed. Evidence: tsc clean, 107/107, offline build OK.
 
+## Addendum 2026-10-28 — 5X60 recovery (one commit)
+- Wired agent res.ok (model_http + sanitised type/code, dead code resolved) with test; spark 502 carries sanitised diag; UI has locks, success states, short IDs, waiting reviewer, last-links, datetime/Copied/unclear polish. Evidence: tsc clean, 108/108, offline build OK.
+
 ## Addendum 2026-10-28 — R1 README (one commit)
 - Root README.md (demo flow, model use, diagram, integrity limits incl. process-scoped revocation, run steps, honest limits). Hygiene: 94 tracked files, no real secrets (test-only placeholders in 4 test files + dev fallback); .env.local/.netlify/node_modules/dist ignored.

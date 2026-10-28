@@ -15,6 +15,7 @@ import {
   attachBox, buildSamRequest, parseSamBoxes, parseSamResponse,
   SAM_ENDPOINT, SAM_PRICE_MILLICENTS, SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
+import { metaDiag } from "../../shared/agentDraft.ts";
 import { fail } from "../../shared/types.ts";
 import type { LedgerEntry } from "../../shared/ledger.ts";
 import type { Readability } from "../../shared/types.ts";
@@ -89,15 +90,44 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
   let actual = max;
   let httpStatus = 0;
   let readOk = false;
+  // Sanitised failure surface: endpoint/status/Meta type-code only — never
+  // the key, the image, or user text. Settles conservatively, leaves the
+  // item untouched, consumes no capture.
+  const failReader = async (diag: string, status: number): Promise<Response> => {
+    try {
+      await blobsScope(missionId, { extraKeys: [`ledger:${phase1.day}`] }, () => {
+        ctx().ledger.settleHandle({ day: phase1.day, caller: "model", missionId, key: uploadId }, max);
+        return null;
+      });
+    } catch {
+      // The reservation stands; ceiling accounting stays conservative.
+    }
+    return json(502, { error: "reader_unavailable", httpStatus: status, diag });
+  };
+  let res: Response;
   try {
-    const res = await fetchFn(SPARK_ENDPOINT, {
+    res = await fetchFn(SPARK_ENDPOINT, {
       method: "POST",
       signal: AbortSignal.timeout(SPARK_TIMEOUT_MS),
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
       body: JSON.stringify(buildSparkRequest(Buffer.from(phase1.bytes).toString("base64"))),
     });
-    httpStatus = res.status;
-    if (!res.ok) throw new Error(`model_http_${res.status}`);
+  } catch {
+    actual = max;
+    return failReader("spark:network", 0);
+  }
+  httpStatus = res.status;
+  if (!res.ok) {
+    let dt = "";
+    try {
+      dt = metaDiag(await res.text());
+    } catch {
+      dt = "";
+    }
+    actual = max;
+    return failReader(`spark:${res.status}${dt}`, res.status);
+  }
+  try {
     let parsed: unknown = null;
     try {
       parsed = JSON.parse(await res.text()) as unknown;
@@ -123,17 +153,7 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
     actual = max;
   }
   if (!readOk) {
-    // Infrastructure or non-OK model outcome: settle conservatively at the
-    // reserved maximum, leave the item untouched, consume no capture.
-    try {
-      await blobsScope(missionId, { extraKeys: [`ledger:${phase1.day}`] }, () => {
-        ctx().ledger.settleHandle({ day: phase1.day, caller: "model", missionId, key: uploadId }, max);
-        return null;
-      });
-    } catch {
-      // The reservation stands; ceiling accounting stays conservative.
-    }
-    return json(502, { error: "reader_unavailable", httpStatus });
+    return failReader("spark:unreadable", httpStatus);
   }
   try {
     const r2 = await blobsScope(missionId, { uploadIds: [uploadId], extraKeys: [`job:spark:${uploadId}`, `ledger:${phase1.day}`] }, (): { state: string; duplicate?: boolean } | { error: string } => {

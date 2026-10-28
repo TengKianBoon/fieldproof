@@ -111,7 +111,7 @@ export type AgentReadout =
 
 // Sanitised model diagnostics: endpoint/status/code only — never the key,
 // the image, or user text. Only strict word characters survive.
-function metaDiag(text: string): string {
+export function metaDiag(text: string): string {
   try {
     const p = JSON.parse(text) as { error?: { type?: unknown; code?: unknown } };
     const clean = (v: unknown): string => (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : "");
@@ -152,6 +152,16 @@ export async function agentDraft(
   } catch {
     settledAtMax();
     return { ok: false, error: "network_error" };
+  }
+  if (!res.ok) {
+    settledAtMax();
+    let diag = "";
+    try {
+      diag = metaDiag(await res.text());
+    } catch {
+      diag = "";
+    }
+    return { ok: false, error: `model_http_${res.status}${diag}` };
   }
   let parsed: unknown = null;
   try {
