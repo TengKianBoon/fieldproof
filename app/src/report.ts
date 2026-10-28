@@ -38,6 +38,7 @@ export interface ReportItem {
   fingerprint: string;
   hasPhoto: boolean;
   hasBox: boolean;
+  box: { x1: number; y1: number; x2: number; y2: number } | null;
   samNote: string | null;
 }
 
@@ -49,6 +50,8 @@ export interface ReportData {
   deadline: string;
   items: ReportItem[];
   unresolved: string[];
+  mismatched: string[];
+  inconclusive: string[];
 }
 
 function resc(s: string): string {
@@ -90,11 +93,15 @@ export function buildReport(m: ReportMission): ReportData {
   const seen = m.observed ?? {};
   const items: ReportItem[] = [];
   const unresolved: string[] = [];
+  const mismatched: string[] = [];
+  const inconclusive: string[] = [];
   for (const e of m.expected ?? []) {
     const o = seen[e.itemId];
     const rawDecision = decisions[e.itemId];
     const decision = typeof rawDecision === "string" ? resc(plainItem(rawDecision)) : null;
     if (decision === null) unresolved.push(resc(e.itemId));
+    else if (rawDecision === "confirmed_mismatch") mismatched.push(resc(e.itemId));
+    else if (rawDecision === "inconclusive") inconclusive.push(resc(e.itemId));
     if (o === undefined) {
       items.push({
         itemId: resc(e.itemId),
@@ -106,6 +113,7 @@ export function buildReport(m: ReportMission): ReportData {
         fingerprint: NOTHING,
         hasPhoto: false,
         hasBox: false,
+        box: null,
         samNote: null,
       });
       continue;
@@ -119,9 +127,10 @@ export function buildReport(m: ReportMission): ReportData {
       reading: resc(o.readability ?? NOTHING),
       state: resc(plainItem(o.state ?? "expected")),
       decision,
-      fingerprint: typeof o.serverHash === "string" && o.serverHash !== "" ? shortRef(o.serverHash) : NOTHING,
+      fingerprint: typeof o.serverHash === "string" && o.serverHash !== "" ? resc(o.serverHash) : NOTHING,
       hasPhoto: o.uploadId !== null && o.uploadId !== undefined && o.uploadId !== "",
       hasBox: box !== null,
+      box: box === null ? null : { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 },
       samNote: box !== null ? null : sam === "none" ? resc("none found") : sam.startsWith("sam:") ? resc(`unavailable (${sam})`) : null,
     });
   }
@@ -133,5 +142,55 @@ export function buildReport(m: ReportMission): ReportData {
     deadline: resc(m.deadline ?? NOTHING),
     items,
     unresolved,
+    mismatched,
+    inconclusive,
   };
+}
+
+// Standalone printable document for an isolated popup window (about:blank
+// URL, so no reviewer bearer token can appear in its address or in browser
+// print headers/footers). photoUrls runs parallel to data.items: a same-
+// origin evidence blob URL, or null for the honest placeholder. All text
+// comes pre-escaped from buildReport and is inserted WITHOUT re-escaping.
+export function reportDocument(data: ReportData, photoUrls: Array<string | null>): string {
+  const blocks: string[] = [];
+  for (let i = 0; i < data.items.length; i++) {
+    const row = data.items[i];
+    const url = photoUrls[i] ?? null;
+    let photo = `<p class="muted">No photo yet.</p>`;
+    if (url !== null) {
+      photo = row.box !== null
+        ? `<div class="box"><img src="${url}" alt="evidence ${row.itemId}" /><div class="loc" style="left:${row.box.x1 * 100}%;top:${row.box.y1 * 100}%;width:${Math.max(0, row.box.x2 - row.box.x1) * 100}%;height:${Math.max(0, row.box.y2 - row.box.y1) * 100}%"><span>AI-located label</span></div></div>`
+        : `<img src="${url}" alt="evidence ${row.itemId}" />`;
+    } else if (row.hasPhoto) {
+      photo = `<p class="err">Photo unavailable.</p>`;
+    }
+    const boxNote = row.hasBox || row.samNote === null ? "" : `<p class="muted">AI box: ${row.samNote}</p>`;
+    const decision = row.decision === null
+      ? `<span class="muted">awaiting reviewer decision</span>`
+      : row.decision;
+    blocks.push(`<div class="card"><p><strong>${row.itemId}</strong> — expected ${row.expected}, observed ${row.observed} (${row.reading}, ${row.state})</p>`
+      + photo + boxNote
+      + `<p>Reviewer decision: ${decision}</p>`
+      + `<p class="muted">Evidence fingerprint (SHA-256):</p><p class="hash">${row.fingerprint}</p></div>`);
+  }
+  const group = (label: string, ids: string[]): string =>
+    ids.length === 0 ? "" : `<p>${label}: ${ids.join(", ")}</p>`;
+  return `<!DOCTYPE html><html><head><title>Field evidence report</title><style>`
+    + `body{font-family:system-ui,sans-serif;margin:0 auto;max-width:40rem;padding:1rem;line-height:1.4;color:#111}`
+    + `.card{border:1px solid #999;border-radius:.5rem;padding:.75rem;margin:.6rem 0;page-break-inside:avoid}`
+    + `img{width:100%}.muted{color:#555;font-size:.9rem}.err{color:#a00;font-weight:600}`
+    + `.hash{word-break:break-all;font-size:.8rem}`
+    + `.box{position:relative}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#0a0;color:#fff;font-size:.8rem}`
+    + `</style></head><body><h1>Field evidence report</h1>`
+    + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
+    + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
+    + group("Awaiting reviewer decision", data.unresolved)
+    + group("Confirmed mismatches", data.mismatched)
+    + group("Inconclusive", data.inconclusive)
+    + blocks.join("")
+    + `<p class="muted">Times shown are server record times. No photo capture time or location is recorded.</p>`
+    + `<p class="muted">Fingerprints are SHA-256 of the stored bytes: they prove the bytes are unchanged, not what the camera saw.</p>`
+    + `<p class="muted">Companion machine-readable evidence: JSON export pack (unsigned).</p>`
+    + `</body></html>`;
 }

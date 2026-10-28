@@ -3,7 +3,7 @@
 // unresolved states render honestly).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildReport, type ReportMission } from "../src/report.ts";
+import { buildReport, reportDocument, type ReportMission } from "../src/report.ts";
 
 function mission(): ReportMission {
   return {
@@ -82,5 +82,96 @@ describe("Stage 1a evidence report", () => {
     assert.deepEqual(out.unresolved, ["b2"]);
     assert.equal(out.items[1].state, "No reading yet");
     assert.equal(out.items[1].fingerprint, "—");
+  });
+});
+
+describe("Stage 1a remedy: isolation, readiness, labels", () => {
+  it("keeps links and tokens out of data and document", () => {
+    const dirty = {
+      missionId: "m-1",
+      state: "decided",
+      siteLabel: "Dock",
+      reviewLink: "https://app.example/#/review/m-1/REVIEWER-BEARER-TOKEN",
+      requesterCode: "code-secret-value",
+      expected: [{ itemId: "b1", expectedLabel: "B12" }],
+      observed: {
+        b1: {
+          observedLabel: "B12", readability: "clear", state: "matched",
+          uploadId: "u1", serverHash: "aa".repeat(32), token: "tok-b1",
+        },
+      },
+      reviewerDecision: { b1: "confirmed_match" },
+    } as unknown as ReportMission;
+    const data = buildReport(dirty);
+    const doc = reportDocument(data, ["blob:local-photo-1"]);
+    for (const text of [JSON.stringify(data), doc]) {
+      for (const banned of ["#/", "http", "token", "secret", "code-secret-value", "REVIEWER-BEARER-TOKEN"]) {
+        assert.ok(!text.includes(banned), `report leaks ${banned}`);
+      }
+    }
+    assert.ok(doc.includes(`<img src="blob:local-photo-1"`));
+  });
+
+  it("marks photo readiness honestly and maps SAM failure notes", () => {
+    const m: ReportMission = {
+      missionId: "m-2",
+      state: "in_review",
+      expected: [
+        { itemId: "b1", expectedLabel: "B12" },
+        { itemId: "b2", expectedLabel: "B17" },
+        { itemId: "b3", expectedLabel: "B23" },
+      ],
+      observed: {
+        b1: { observedLabel: "B12", readability: "clear", state: "matched", uploadId: "u1", serverHash: "bb".repeat(32) },
+        b2: {
+          observedLabel: null, readability: "blurred", state: "unclear",
+          uploadId: "u2", serverHash: "cc".repeat(32),
+          samStatus: { uploadId: "u2", status: "sam:500:server_error" },
+        },
+      },
+      reviewerDecision: {},
+    };
+    const data = buildReport(m);
+    assert.equal(data.items[0].hasPhoto, true);
+    assert.equal(data.items[1].samNote, "unavailable (sam:500:server_error)");
+    assert.equal(data.items[2].hasPhoto, false);
+    const doc = reportDocument(data, ["blob:photo-1", null, null]);
+    assert.ok(doc.includes(`<img src="blob:photo-1"`));
+    assert.ok(doc.includes("Photo unavailable."));
+    assert.ok(doc.includes("No photo yet."));
+  });
+
+  it("labels groups and prints full wrapping fingerprints with the box overlay", () => {
+    const m: ReportMission = {
+      missionId: "m-3",
+      state: "decided",
+      expected: [
+        { itemId: "b1", expectedLabel: "B12" },
+        { itemId: "b2", expectedLabel: "B17" },
+        { itemId: "b3", expectedLabel: "B23" },
+      ],
+      observed: {
+        b1: {
+          observedLabel: "B12", readability: "clear", state: "matched",
+          uploadId: "u1", serverHash: "ab".repeat(32),
+          labelBox: { x1: 0.3, y1: 0.35, x2: 0.7, y2: 0.65, confidence: 0.96 },
+        },
+        b2: { observedLabel: "B71", readability: "clear", state: "mismatched", uploadId: "u2", serverHash: "cd".repeat(32) },
+      },
+      reviewerDecision: { b1: "confirmed_match", b2: "confirmed_mismatch" },
+    };
+    const data = buildReport(m);
+    assert.deepEqual(data.mismatched, ["b2"]);
+    assert.deepEqual(data.inconclusive, []);
+    assert.deepEqual(data.unresolved, ["b3"]);
+    assert.equal(data.items[0].fingerprint, "ab".repeat(32));
+    assert.ok(data.items[0].box !== null);
+    const doc = reportDocument(data, ["blob:photo-1", null, null]);
+    assert.ok(doc.includes("Awaiting reviewer decision: b3"));
+    assert.ok(doc.includes("Confirmed mismatches: b2"));
+    assert.ok(!doc.includes("Inconclusive:"));
+    assert.ok(doc.includes("ab".repeat(32)));
+    assert.ok(doc.includes('class="loc"'));
+    assert.ok(doc.includes("word-break:break-all"));
   });
 });

@@ -5,7 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls } from "./client.ts";
-import { buildReport, plainItem, plainState } from "./report.ts";
+import { buildReport, plainItem, plainState, reportDocument } from "./report.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -332,7 +332,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
-    <button id="r-print">Print report</button><div id="r-report"></div><div id="r-out"></div>`;
+    <button id="r-print">Print report</button><div id="r-out"></div>`;
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     const slot = el.querySelector(`[data-photo="${e.itemId}"]`) as HTMLElement;
@@ -405,60 +405,76 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
     }
   };
-  // Stage 1a readable report: built only from the already-authorized mission
-  // view plus evidence photos through the existing flow. Report strings from
-  // buildReport are pre-escaped and inserted WITHOUT re-escaping; raw values
-  // below are escaped at use. No tokens, links, codes, or secrets included.
+  // Stage 1a remedy: the printable report lives in an isolated popup
+  // document (about:blank URL), so this page's reviewer bearer token never
+  // reaches the printout or browser headers/footers. Review state here is
+  // untouched. Printing gates on every evidence image decoding (or honestly
+  // failing) within a bound.
   (document.getElementById("r-print") as HTMLButtonElement).onclick = async () => {
-    const slot = document.getElementById("r-report") as HTMLElement;
     const b = document.getElementById("r-print") as HTMLButtonElement;
     if (b.disabled) return;
     b.disabled = true;
     try {
       const data = buildReport({ ...m, missionId });
-      const blocks: string[] = [];
-      for (let i = 0; i < data.items.length; i++) {
-        const e = m.expected[i];
-        const row = data.items[i];
-        const rec = m.observed[e.itemId] as
-          { uploadId: string | null; labelBox?: { x1: number; y1: number; x2: number; y2: number } | null } | undefined;
+      const urls: Array<string | null> = [];
+      for (const e of m.expected) {
+        const rec = m.observed[e.itemId] as { uploadId: string | null } | undefined;
         const uid = rec?.uploadId ?? null;
-        let photo = `<p class="muted">No photo yet.</p>`;
-        if (uid !== null && uid !== "") {
-          try {
-            const blob = await evidenceBlob(missionId, uid, token);
-            const u = URL.createObjectURL(blob);
-            revoked.push(u);
-            const bx = rec?.labelBox ?? null;
-            photo = bx !== null
-              ? `<div style="position:relative"><img src="${u}" alt="evidence ${esc(e.itemId)}" style="width:100%" /><div style="position:absolute;left:${bx.x1 * 100}%;top:${bx.y1 * 100}%;width:${Math.max(0, bx.x2 - bx.x1) * 100}%;height:${Math.max(0, bx.y2 - bx.y1) * 100}%;border:3px solid #0a0;box-sizing:border-box"><span style="background:#0a0;color:#fff;font-size:.8rem">AI-located label</span></div></div>`
-              : `<img src="${u}" alt="evidence ${esc(e.itemId)}" />`;
-          } catch {
-            photo = `<p class="err">Photo unavailable for ${esc(e.itemId)}.</p>`;
-          }
+        if (uid === null || uid === "") {
+          urls.push(null);
+          continue;
         }
-        const boxNote = row.hasBox || row.samNote === null ? "" : `<p class="muted">AI box: ${row.samNote}</p>`;
-        const decision = row.decision === null
-          ? `<span class="muted">unresolved — awaiting reviewer decision</span>`
-          : row.decision;
-        blocks.push(`<div class="card"><p><strong>${row.itemId}</strong> — expected ${row.expected}, observed ${row.observed} (${row.reading}, ${row.state})</p>`
-          + photo + boxNote
-          + `<p>Reviewer decision: ${decision}</p>`
-          + `<p class="muted">Evidence fingerprint (SHA-256): ${row.fingerprint}</p></div>`);
+        try {
+          const blob = await evidenceBlob(missionId, uid, token);
+          const u = URL.createObjectURL(blob);
+          revoked.push(u);
+          urls.push(u);
+        } catch {
+          urls.push(null);
+        }
       }
-      const open = data.unresolved.length === 0 ? "" : `<p>Unresolved items: ${data.unresolved.join(", ")}</p>`;
-      slot.innerHTML = `<div class="card"><h2>Field evidence report</h2>`
-        + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
-        + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
-        + open + blocks.join("")
-        + `<p class="muted">Times shown are server record times. No photo capture time or location is recorded.</p>`
-        + `<p class="muted">Fingerprints are SHA-256 of the stored bytes: they prove the bytes are unchanged, not what the camera saw.</p>`
-        + `<p class="muted">Companion machine-readable evidence: JSON export pack (unsigned).</p></div>`;
-      window.print();
+      const w = window.open("", "_blank");
+      if (w === null) {
+        (document.getElementById("r-out") as HTMLElement).innerHTML =
+          `<p class="err">Popup blocked — allow popups to print the report.</p>`;
+        return;
+      }
+      w.document.write(reportDocument(data, urls));
+      w.document.close();
+      await waitReportImages(w.document);
+      w.print();
     } catch (e) {
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
     } finally {
       b.disabled = false;
     }
   };
+}
+
+// Bounded image readiness gate for the print popup: resolves once every
+// image has decoded, failed, or its bound elapsed; undecodable images become
+// the honest placeholder before printing.
+function waitReportImages(doc: Document): Promise<void> {
+  const imgs = Array.from(doc.querySelectorAll("img"));
+  return Promise.all(imgs.map((img) => new Promise<void>((resolve) => {
+    let settled = false;
+    const done = (ok: boolean): void => {
+      if (settled) return;
+      settled = true;
+      if (!ok) {
+        const p = doc.createElement("p");
+        p.className = "err";
+        p.textContent = `Photo unavailable (${img.alt}).`;
+        img.replaceWith(p);
+      }
+      resolve();
+    };
+    if (img.complete) {
+      done(img.naturalWidth > 0);
+      return;
+    }
+    img.addEventListener("load", () => done(img.naturalWidth > 0), { once: true });
+    img.addEventListener("error", () => done(false), { once: true });
+    window.setTimeout(() => done(img.complete && img.naturalWidth > 0), 8000);
+  }))).then(() => undefined);
 }
