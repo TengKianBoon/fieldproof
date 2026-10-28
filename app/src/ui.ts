@@ -415,34 +415,41 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     if (b.disabled) return;
     b.disabled = true;
     try {
-      const data = buildReport({ ...m, missionId });
-      const urls: Array<string | null> = [];
-      for (const e of m.expected) {
-        const rec = m.observed[e.itemId] as { uploadId: string | null } | undefined;
-        const uid = rec?.uploadId ?? null;
-        if (uid === null || uid === "") {
-          urls.push(null);
-          continue;
-        }
-        try {
-          const blob = await evidenceBlob(missionId, uid, token);
-          const u = URL.createObjectURL(blob);
-          revoked.push(u);
-          urls.push(u);
-        } catch {
-          urls.push(null);
-        }
-      }
+      // Open synchronously inside the click: phone browsers drop user
+      // activation across awaits, which would force-block the popup.
       const w = window.open("", "_blank");
       if (w === null) {
         (document.getElementById("r-out") as HTMLElement).innerHTML =
           `<p class="err">Popup blocked — allow popups to print the report.</p>`;
         return;
       }
-      w.document.write(reportDocument(data, urls));
-      w.document.close();
-      await waitReportImages(w.document);
-      w.print();
+      try {
+        const data = buildReport({ ...m, missionId });
+        const urls: Array<string | null> = [];
+        for (const e of m.expected) {
+          const rec = m.observed[e.itemId] as { uploadId: string | null } | undefined;
+          const uid = rec?.uploadId ?? null;
+          if (uid === null || uid === "") {
+            urls.push(null);
+            continue;
+          }
+          try {
+            const blob = await evidenceBlob(missionId, uid, token);
+            const u = URL.createObjectURL(blob);
+            revoked.push(u);
+            urls.push(u);
+          } catch {
+            urls.push(null);
+          }
+        }
+        w.document.write(reportDocument(data, urls));
+        w.document.close();
+        await waitReportImages(w.document);
+        w.print();
+      } catch (e) {
+        w.close();
+        throw e;
+      }
     } catch (e) {
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
     } finally {

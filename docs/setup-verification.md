@@ -206,3 +206,6 @@ Date (UTC): 2026-10-27. Owner: TKB. This receipt supersedes stale statements in 
 
 ## Addendum 2026-10-28 — Stage 1a remedy: isolated print document (one commit)
 - Report now renders into an isolated popup document (about:blank URL), so the reviewer address token never reaches the printout or browser headers/footers; review state untouched, popup-block yields an honest message. Printing gates on every image decoding (or honestly failing to a placeholder) within an 8s-per-image bound. Fingerprints are full SHAs with wrapping plus an explicit SHA-256 label; decision groups read Awaiting reviewer decision / Confirmed mismatches / Inconclusive. Regression tests added for isolation, photo readiness/failure, and labels. Evidence: tsc clean, 118/118, offline build OK (9 modules).
+
+## Addendum 2026-10-28 — Stage 1a remedy fix: synchronous popup open (one commit)
+- Review feedback: the popup opened after awaited photo fetches, which drops click activation on phone browsers. The blank window now opens synchronously inside the click before any await, then populates, readiness-gates, and prints; a mid-flow failure closes the orphan window instead of leaving it blank. No blanket popup-permission requirement. Evidence: tsc clean, report tests 6/6, offline build OK (9 modules).
