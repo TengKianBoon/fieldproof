@@ -10,7 +10,7 @@
 import { blobsScope, ctx, json, needToken, uploadBytes } from "./_ctx.mts";
 import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 import { buildSparkRequest, SPARK_ENDPOINT, SPARK_TIMEOUT_MS } from "../../shared/sparkReader.ts";
-import { costOf, parseResponse, planningCapPerCall, toLabel, type Usage } from "../../shared/spikecost.ts";
+import { costOf, parseResponse, planningCapPerCall, toLabel, validReading, type Usage } from "../../shared/spikecost.ts";
 import {
   attachBox, buildSamRequest, parseSamBoxes, parseSamResponse,
   SAM_ENDPOINT, SAM_PRICE_MILLICENTS, SAM_TIMEOUT_MS, type SamBox,
@@ -87,6 +87,8 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
   let label: string | null = null;
   let readability: Readability = "unreadable";
   let actual = max;
+  let httpStatus = 0;
+  let readOk = false;
   try {
     const res = await fetchFn(SPARK_ENDPOINT, {
       method: "POST",
@@ -94,6 +96,8 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
       body: JSON.stringify(buildSparkRequest(Buffer.from(phase1.bytes).toString("base64"))),
     });
+    httpStatus = res.status;
+    if (!res.ok) throw new Error(`model_http_${res.status}`);
     let parsed: unknown = null;
     try {
       parsed = JSON.parse(await res.text()) as unknown;
@@ -102,17 +106,34 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
     }
     const pr = parsed === null ? fail("bad_response") : parseResponse(parsed);
     if (pr.ok) {
-      const v = pr.value as { status: string; usage: Usage | null; reading: { readability: string; lot_code: string } };
-      const measured = v.status !== "completed" ? null : costOf(v.usage);
-      if (measured !== null) {
-        actual = Math.round(measured * 100_000);
-        const mapped = mapReading(v.reading.readability, v.reading.lot_code);
-        label = mapped.label;
-        readability = mapped.readability;
+      const v = pr.value as { status: string; usage: Usage | null; reading: unknown };
+      if (v.status === "completed" && validReading(v.reading)) {
+        const measured = costOf(v.usage);
+        if (measured !== null) {
+          actual = Math.round(measured * 100_000);
+          const rd = v.reading as { readability: string; lot_code: string };
+          const mapped = mapReading(rd.readability, rd.lot_code);
+          label = mapped.label;
+          readability = mapped.readability;
+          readOk = true;
+        }
       }
     }
   } catch {
     actual = max;
+  }
+  if (!readOk) {
+    // Infrastructure or non-OK model outcome: settle conservatively at the
+    // reserved maximum, leave the item untouched, consume no capture.
+    try {
+      await blobsScope(missionId, { extraKeys: [`ledger:${phase1.day}`] }, () => {
+        ctx().ledger.settleHandle({ day: phase1.day, caller: "model", missionId, key: uploadId }, max);
+        return null;
+      });
+    } catch {
+      // The reservation stands; ceiling accounting stays conservative.
+    }
+    return json(502, { error: "reader_unavailable", httpStatus });
   }
   try {
     const r2 = await blobsScope(missionId, { uploadIds: [uploadId], extraKeys: [`job:spark:${uploadId}`, `ledger:${phase1.day}`] }, (): { state: string; duplicate?: boolean } | { error: string } => {

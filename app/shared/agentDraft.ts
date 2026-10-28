@@ -109,6 +109,19 @@ export type AgentReadout =
   | { ok: true; draft: MissionDraft; costMillicents: number; uncertain: boolean; status: string }
   | { ok: false; error: string };
 
+// Sanitised model diagnostics: endpoint/status/code only — never the key,
+// the image, or user text. Only strict word characters survive.
+function metaDiag(text: string): string {
+  try {
+    const p = JSON.parse(text) as { error?: { type?: unknown; code?: unknown } };
+    const clean = (v: unknown): string => (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : "");
+    const parts = [clean(p?.error?.type), clean(p?.error?.code)].filter((s) => s !== "");
+    return parts.length > 0 ? `:${parts.join(":")}` : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function agentDraft(
   description: string,
   ledger: Ledger,

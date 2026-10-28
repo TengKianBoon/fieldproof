@@ -197,7 +197,10 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
           await render();
         }
       } catch (e) {
-        msg.innerHTML = errBox(e);
+        const m = e instanceof Error ? e.message : String(e);
+        msg.innerHTML = m.includes("reader_unavailable")
+          ? `<p class="err">Couldn't read the photo — check the light and take it again.</p>`
+          : errBox(e);
       }
     };
   }

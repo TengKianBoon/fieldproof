@@ -34,7 +34,14 @@ async function mockCapture(req: Request): Promise<Response> {
   const bytes = uploadBytes(uploadId);
   if (bytes === null) return json(400, { error: "upload_bytes_missing" });
   if (!sha256Equal(sha256Hex(bytes), rec.serverHash)) return json(400, { error: "hash_mismatch" });
-  const seen = reader.read(bytes);
+  const seen = (() => {
+    try {
+      return reader.read(bytes);
+    } catch {
+      return null;
+    }
+  })();
+  if (seen === null) return json(502, { error: "reader_unavailable", httpStatus: 0 });
   const r = missions.submitCapture(missionId, itemId, {
     uploadId,
     serverHash: rec.serverHash,

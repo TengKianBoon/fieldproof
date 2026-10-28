@@ -1,12 +1,12 @@
 # FieldProof
 
-FieldProof is a field-evidence product for a remote requester and an on-site worker. The requester opens a collection mission for labelled boxes; the worker photographs them on a phone; a server-side reader checks what is on each label; a reviewer confirms the outcome; and the mission exports a signed evidence pack.
+FieldProof is a field-evidence product for a remote requester and an on-site worker. The requester opens a collection mission for labelled boxes; the worker photographs them on a phone; a server-side reader checks what is on each label; a reviewer confirms the outcome; and the mission exports a JSON evidence pack (mission record, readings, boxes, decisions).
 
 Demo flow: one supplier collection, three labelled boxes (B12, B17, B23) against a synthetic delivery note. An unreadable label triggers a targeted close-up while the worker is still on site (at most two, then inconclusive). An expected B17 that reads as B71 becomes an evidence-linked discrepancy a human must review — the app never calls insufficient evidence a match.
 
 ## How Meta models are used
 
-- **muse-spark-1.3** reads each captured label through the Responses API with a strict JSON schema (`readability`, `lot_code`), `store: false`, and no expected values in the prompt. Unknown content returns null, never a guess.
+- **muse-spark-1.3** reads each captured label through the Responses API with a strict JSON schema (`readability`, `lot_code`), `store: false`, and no expected values in the prompt. Unknown content is instructed to return null rather than a guess — a reader instruction, not a guarantee.
 - **sam-3.1** locates the label box on each stored photo (boxes only, best confidence, normalised 0–1). The reviewer sees it as an "AI-located label" rectangle.
 - The **Spark function tool** `create_field_mission` drafts a mission from the requester's plain-English description (strict schema, forced tool choice). The agent only drafts: a human confirms and edits the fields before anything is created.
 - Every model call reserves its maximum cost from a daily ledger first and settles once afterwards; timed-out or uncertain calls settle at the reserved maximum.
@@ -27,7 +27,7 @@ Each request runs its existing logic inside one per-request transact over Blobs 
 
 - SHA-256 on both sides: the browser hashes each photo, the server re-hashes every chunk and the assembled file. Hashes prove the bytes are unchanged, not that a photo shows the real box.
 - Role links (requester, worker, reviewer) are HMAC-signed, expire, and are mission-scoped. Tokens travel in fragments, bodies, or headers — never in query strings. `#/new` additionally needs a requester access code in production.
-- Revocation is currently process-scoped and does not survive a restart (persistence is deferred). Do not treat it as durable.
+- Revocation is currently process-scoped and does not survive a restart (persistence is deferred). Do not treat it as durable: an instance-local revocation may still allow a revoked link on another instance.
 - A daily spend ceiling (US$2 demo default, `LEDGER_CEILING_USD` otherwise) fails closed, and production refuses to run without its secret, blob store, and access code.
 - The worker's view is a capture brief: no expected labels, no reviewer decisions.
 
@@ -49,7 +49,7 @@ Repo started 27 Oct 2026. Shipped so far: the mocked full mission loop (consent,
 ## Honest limits
 
 - This is a private demo, not a production release.
-- Box bytes rest in the US Blobs region; no real pilot data has been collected.
+- Photos and mission records are stored in US Blobs; no real pilot data has been collected.
 - Revocation does not persist across restarts yet.
 - Byte hashes prove integrity in transit and storage, not physical truth on site.
 - Live model behaviour (real photos, real calls) is proven by the phone test, not by the mocked suite.
