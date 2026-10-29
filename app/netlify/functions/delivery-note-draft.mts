@@ -57,7 +57,8 @@ export default async function handler(req: Request): Promise<Response> {
       const day = (r.value as { day: string }).day;
       return { tag: "ticket" as const, ticket: { ...c.ticket, day } };
     });
-    if (phase1.tag === "cached") return json(200, { draft: phase1.draft });
+    // Stage 2c: cache hits say so, so the UI can report no new AI call.
+    if (phase1.tag === "cached") return json(200, { draft: phase1.draft, cached: true });
     if (phase1.tag === "error") return json(statusFor(phase1.error), { error: phase1.error });
     ticket = phase1.ticket;
   } catch (e) {
@@ -88,7 +89,7 @@ export default async function handler(req: Request): Promise<Response> {
       return { settled: true as const, draft: fetched.draft };
     });
     if (!phase2.settled) return json(statusFor(phase2.error), { error: phase2.error });
-    return json(200, { draft: (phase2 as { draft: unknown }).draft });
+    return json(200, { draft: (phase2 as { draft: unknown }).draft, cached: false });
   } catch (e) {
     // Unrecoverable settlement conflict: the reservation stands
     // (conservative), the model is never re-called.

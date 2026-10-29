@@ -232,8 +232,8 @@ describe("Stage 2a two-axis review summary", () => {
     const s = summarizeReview({
       expected: [{ itemId: "box1" }, { itemId: "box2" }],
       observed: {
-        box1: { state: "closeup_requested" },
-        box2: { state: "expected" },
+        box1: { readability: "blurred", observedLabel: null, uploadId: "u1" },
+        box2: {},
       },
       reviewerDecision: {},
     });

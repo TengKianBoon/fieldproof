@@ -1,14 +1,20 @@
+import { compareLabels } from "./compare.ts";
+
 // Stage 2a deterministic two-axis review summary. Derived only from
-// authoritative existing fields (expected/observed states, reviewerDecision)
-// without changing evidence or state.
+// authoritative existing fields (expected labels, reading evidence,
+// reviewerDecision) without changing evidence or state.
 //
 // Reading axis (mutually exclusive, covers all N items):
 // matched / mismatched / unclear-or-inconclusive / no reading yet.
 // Reviewer axis: awaiting decision vs actually recorded decisions.
 // An undecided mismatch is a "mismatched reading", never "confirmed".
 export interface SummaryInput {
-  expected?: Array<{ itemId: string }>;
-  observed?: Record<string, { state?: string }>;
+  expected?: Array<{ itemId: string; expectedLabel?: string }>;
+  observed?: Record<string, {
+    readability?: string;
+    observedLabel?: string | null;
+    uploadId?: string | null;
+  }>;
   reviewerDecision?: Record<string, unknown>;
 }
 
@@ -37,12 +43,19 @@ export function summarizeReview(m: SummaryInput): ReviewSummary {
   let confirmedMismatch = 0;
   let ruledInconclusive = 0;
   for (const e of list) {
-    const st = seen[e.itemId]?.state;
-    if (st === "matched") matched++;
-    else if (st === "mismatched") mismatched++;
-    // Stage 2b-2: a requested close-up is still an unresolved reading,
-    // counted with unclear/inconclusive — never as no-reading or matched.
-    else if (st === "unclear" || st === "inconclusive" || st === "closeup_requested") unclear++;
+    // Stage 2c: the reading axis derives from preserved reading evidence —
+    // never from the mutable item state, which reviewer decisions overwrite.
+    // Clear readability plus a nonempty observed label compares against the
+    // expected label; a capture that cannot compare is unclear; no capture
+    // is no reading.
+    const o = seen[e.itemId];
+    const label = typeof o?.observedLabel === "string" ? o.observedLabel : null;
+    const upload = typeof o?.uploadId === "string" && o.uploadId !== "";
+    if (o?.readability === "clear" && label !== null && label.trim() !== "" && (e.expectedLabel ?? "") !== "") {
+      const c = compareLabels(e.expectedLabel as string, label, true);
+      if (c.ok && c.value === "matched") matched++;
+      else mismatched++;
+    } else if (upload) unclear++;
     else noReading++;
     const d = decisions[e.itemId];
     if (d === "confirmed_match") confirmedMatch++;

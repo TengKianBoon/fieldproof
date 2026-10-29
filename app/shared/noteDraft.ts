@@ -12,7 +12,6 @@ import { CODE_RE, MAX_ITEMS } from "./missions.ts";
 import { detectImageMime } from "./samBoxes.ts";
 import { metaDiag } from "./agentDraft.ts";
 import { sha256Hex } from "./hash.ts";
-import { stripToWall } from "./timezone.ts";
 import type { Ledger } from "./ledger.ts";
 import type { KVStore } from "./store.ts";
 
@@ -25,10 +24,12 @@ export const NOTE_MAX_OUTPUT_TOKENS = 2000;
 // S11b prompt: quote, never guess; empty string means unknown.
 export const NOTE_PROMPT =
   "Read this photographed delivery note for a warehouse box collection. " +
-  "Report the site name, the expected lot codes, the due date-time, and the " +
-  "time zone. Quote a short source snippet from the note for each field you " +
-  "fill. Use an empty string for any value or snippet you cannot clearly " +
-  "read. Never guess a code, date, or time zone that is not clearly printed.";
+  "Report the site name, the expected lot codes, the due date-time as a " +
+  "local wall-clock reading in exactly YYYY-MM-DDTHH:MM form with NO time " +
+  "zone suffix, and the time zone separately. Quote a short source snippet " +
+  "from the note for each field you fill. Use an empty string for any value " +
+  "or snippet you cannot clearly read. Never guess a code, date, or time " +
+  "zone that is not clearly printed.";
 
 export interface NoteField {
   value: string;
@@ -63,10 +64,76 @@ export function validNoteDraft(d: unknown): d is {
   for (const c of v.expected_codes) {
     if (typeof c !== "string" || !CODE_RE.test(c)) return false;
   }
-  if (typeof v.deadline !== "string" || !Number.isFinite(Date.parse(v.deadline))) return false;
+  if (typeof v.deadline !== "string" || normalizeWallDeadline(v.deadline) === "") return false;
   if (typeof v.timezone !== "string") return false;
   if (typeof v.snippets !== "object" || v.snippets === null) return false;
   return true;
+}
+
+// Stage 2c: normalize an explicit, unambiguous wall reading to
+// YYYY-MM-DDTHH:MM with no timezone shift. Accepts ISO walls (a model-
+// appended Z/offset is stripped, never applied) and explicit human forms
+// such as "30 Oct 2026, 18:00" or "2026/10/30 18:00". Anything ambiguous or
+// unsupported (bare dates without a time, relative words, MDY confusion)
+// returns "" rather than guessing.
+const WALL_ISO_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?$/;
+const WALL_DMY_RE = /^(\d{1,2}) ([A-Za-z]+) (\d{4}),? (\d{1,2}):(\d{2})$/;
+const WALL_YMD_RE = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/;
+const MONTHS: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8,
+  sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function wallPartsValid(y: number, mo: number, d: number, h: number, mi: number): boolean {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return false;
+  const t = Date.UTC(y, mo - 1, d, h, mi);
+  const c = new Date(t);
+  return c.getUTCFullYear() === y && c.getUTCMonth() === mo - 1 && c.getUTCDate() === d;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+export function normalizeWallDeadline(s: string): string {
+  const t = s.trim().replace(/([zZ]|[+-]\d{2}:?\d{2}|[+-]\d{4})$/, "");
+  let y = 0;
+  let mo = 0;
+  let d = 0;
+  let h = 0;
+  let mi = 0;
+  const iso = WALL_ISO_RE.exec(t);
+  if (iso !== null) {
+    y = Number(iso[1]);
+    mo = Number(iso[2]);
+    d = Number(iso[3]);
+    h = Number(iso[4]);
+    mi = Number(iso[5]);
+  } else {
+    const dmy = WALL_DMY_RE.exec(t);
+    const ymd = dmy === null ? WALL_YMD_RE.exec(t) : null;
+    if (dmy !== null) {
+      const m = MONTHS[dmy[2].toLowerCase()];
+      if (m === undefined) return "";
+      d = Number(dmy[1]);
+      mo = m;
+      y = Number(dmy[3]);
+      h = Number(dmy[4]);
+      mi = Number(dmy[5]);
+    } else if (ymd !== null) {
+      y = Number(ymd[1]);
+      mo = Number(ymd[2]);
+      d = Number(ymd[3]);
+      h = Number(ymd[4]);
+      mi = Number(ymd[5]);
+    } else {
+      return "";
+    }
+  }
+  if (y < 1000 || y > 9999 || !wallPartsValid(y, mo, d, h, mi)) return "";
+  return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}`;
 }
 
 export function toNoteDraft(v: {
@@ -82,10 +149,11 @@ export function toNoteDraft(v: {
   return {
     siteLabel: { value: v.site_label, snippet: sn("site_label") },
     codes: v.expected_codes.map((c, i) => ({ value: c, snippet: snArr("expected_codes", i) })),
-    // Task 0: a missing timezone keeps the bare wall time — a Z/offset the
-    // model appended must not silently attach a zone. The human picks the
-    // zone at Create; the server converts wall+zone to a real instant.
-    deadline: { value: tz === "" ? stripToWall(v.deadline) : v.deadline, snippet: sn("deadline") },
+    // Tasks 0/2c: the deadline is always a bare wall time — a Z/offset the
+    // model appended must not silently attach a zone, and explicit human
+    // forms normalize without shifting. The human picks the zone at Create;
+    // the server converts wall+zone to a real instant.
+    deadline: { value: normalizeWallDeadline(v.deadline), snippet: sn("deadline") },
     timezone: { value: tz === "" ? null : tz, snippet: sn("timezone") },
   };
 }
@@ -101,8 +169,14 @@ export const NOTE_SCHEMA = {
   properties: {
     site_label: T_STR,
     expected_codes: { type: "array", items: { type: "string" } },
-    deadline: T_STR,
-    timezone: T_STR,
+    deadline: {
+      type: "string",
+      description: "Local wall-clock date-time in exactly YYYY-MM-DDTHH:MM form, no time zone suffix.",
+    },
+    timezone: {
+      type: "string",
+      description: "IANA time zone name or UTC offset for the deadline; empty string when unknown.",
+    },
     snippets: {
       type: "object",
       additionalProperties: false,

@@ -303,6 +303,7 @@ function viewNew(el: HTMLElement): void {
           deadline: { value: string; snippet: string };
           timezone: { value: string | null; snippet: string };
         };
+        cached?: boolean;
         error?: string;
       };
       if (!r.ok) {
@@ -323,9 +324,18 @@ function viewNew(el: HTMLElement): void {
       // Task 0: a zone-less draft deadline stays a wall time — never run it
       // through the device zone. A validated model zone becomes a third,
       // still unselected, choice; the server re-validates it at Create.
+      // Stage 2c: an empty wall value leaves the field blank with guidance.
       const dw = d.deadline.value;
-      (document.getElementById("f-dl") as HTMLInputElement).value =
-        /([zZ]|[+-]\d{2}:?\d{2}|[+-]\d{4})$/.test(dw) ? toLocalInput(new Date(dw)) : dw.slice(0, 16);
+      const dlInput = document.getElementById("f-dl") as HTMLInputElement;
+      let dlNote = "";
+      if (dw === "") {
+        dlInput.value = "";
+        dlNote = `<p class="err">Deadline not filled - enter it from the note.</p>`;
+      } else if (/([zZ]|[+-]\d{2}:?\d{2}|[+-]\d{4})$/.test(dw)) {
+        dlInput.value = toLocalInput(new Date(dw));
+      } else {
+        dlInput.value = dw.slice(0, 16);
+      }
       noteZone = d.timezone.value !== null && zoneValid(d.timezone.value) ? d.timezone.value : null;
       paintTz();
       const snip = (label: string, s: string): string =>
@@ -333,11 +343,13 @@ function viewNew(el: HTMLElement): void {
       nfields.innerHTML = snip("Site", d.siteLabel.snippet)
         + d.codes.map((c, i) => snip(`Box ${i + 1}`, c.snippet)).join("")
         + snip("Deadline", d.deadline.snippet)
-        + `<p class="muted">Time zone: ${d.timezone.value === null ? "unknown — choose device or UTC below" : esc(d.timezone.value) + (noteZone === null ? " (not recognised — choose device or UTC below)" : " (listed below — select it to use it)")}</p>`
+        + `<p class="muted">Time zone: ${d.timezone.value === null ? "unknown — choose device or UTC next to the deadline" : esc(d.timezone.value) + (noteZone === null ? " (not recognised — choose device or UTC next to the deadline)" : " (listed next to the deadline — select it to use it)")}</p>`
         + `<p class="muted">Snippets quote what the model read — check them against the photo yourself. Snippet agreement is not independent verification.</p>`;
       notePending = true;
       confirmBox.checked = false;
-      nmsg.innerHTML = `<p class="ok">Draft ready — check every field against the photo, tick confirmation, then Create mission.</p>`;
+      nmsg.innerHTML = (j.cached === true ? `<p class="ok">Saved draft - no new AI call.</p>` : "")
+        + `<p class="ok">Draft ready — check every field against the photo, tick confirmation, then Create mission.</p>`
+        + dlNote;
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       nmsg.innerHTML = m.includes("no_note_photo") ? `<p class="err">Choose a delivery-note photo first.</p>`
