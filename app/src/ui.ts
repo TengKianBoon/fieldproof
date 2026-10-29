@@ -11,6 +11,7 @@ import { suggestReview } from "../shared/suggest.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 import { briefOutOfDate } from "./briefStale.ts";
+import { geoFromMission, locationSectionHtml, osmIframe, type GeoView } from "./locationMap.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -163,11 +164,26 @@ function ageWords(fixMs: number, nowMs: number): string {
   return `${Math.floor(mm / 60)} hr ${mm % 60} min`;
 }
 
-function checkinCard(v: unknown): string {
+function checkinCard(v: unknown, geo: GeoView | null = null): string {
   const c = viewCheckin(v);
   if (c === null) return "";
+  // M1: reviewer only - coordinates, Google Maps link, a drawn diagram and
+  // an on-request OpenStreetMap view (built from numbers only).
+  const loc = geo === null ? null : locationSectionHtml(geo, false);
   return `<div class="card" id="r-checkin"><p><strong>Check-in</strong> — ${esc(plainCheckin(c.status))}${c.distanceM === null ? "" : ` (${Math.round(c.distanceM)} m)`} · accuracy ±${Math.round(c.accuracyM)} m${c.stale ? " · stale" : ""}${c.lowAccuracy ? " · low accuracy" : ""}</p>`
-    + `<p class="muted">Fix ${esc(c.fixTime)} (${esc(ageWords(Date.parse(c.fixTime), Date.now()))} old).</p><p class="muted">${esc(CHECKIN_NOTE)}</p></div>`;
+    + `<p class="muted">Fix ${esc(c.fixTime)} (${esc(ageWords(Date.parse(c.fixTime), Date.now()))} old).</p><p class="muted">${esc(CHECKIN_NOTE)}</p>${loc ?? ""}</div>`;
+}
+
+// M1: the live map loads only when asked (no third-party request otherwise).
+function bindMapButton(geo: GeoView): void {
+  const b = document.getElementById("r-map") as HTMLButtonElement | null;
+  const box = document.getElementById("r-mapbox") as HTMLElement | null;
+  if (b === null || box === null) return;
+  b.onclick = () => {
+    const f = osmIframe(geo);
+    if (f !== null) box.innerHTML = f;
+    b.hidden = true;
+  };
 }
 
 // Task 0b stale-item message: finished items refuse server-side; the worker
@@ -904,7 +920,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   const m = s.mission;
   if (m.state !== "in_review" && m.state !== "decided") {
     const photos = m.expected.filter((e) => m.observed[e.itemId]?.uploadId).length;
-    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for the field professional — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>${checkinCard(m.checkin)}`;
+    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for the field professional — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>${checkinCard(m.checkin, geoFromMission(m))}`;
+    bindMapButton(geoFromMission(m));
     (document.getElementById("r-refresh") as HTMLButtonElement).onclick = () => void render();
     return;
   }
@@ -923,19 +940,22 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   // first, matches as a count, undecided mismatches never "confirmed".
   const summaryInner = (mm: typeof m): string => `<p><strong>Summary</strong></p>${summaryLines(summarizeReview(mm)).map((l) => `<p>${esc(l)}</p>`).join("")}`;
   const reviewSummary = `<div class="card" id="r-summary">${summaryInner(m)}</div>`;
+  const geo = geoFromMission(m);
   const reviewBrief = m.brief == null ? ""
     : `<div class="card" id="r-brief"><p><strong>Brief</strong></p>${
       (m.brief.title === undefined || m.brief.title === "" ? "" : `<p><strong>${esc(m.brief.title)}</strong></p>`)
       + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
       + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
     }</div>`;
-  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${checkinCard(m.checkin)}${reviewSummary}
+  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${checkinCard(m.checkin, geo)}${reviewSummary}
     <button id="r-ai">AI brief (suggestion, a person decides)</button><div id="r-bout"></div>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
+    ${geo.fix === null ? "" : `<label><input type="checkbox" id="r-printloc" /> Include the check-in location (coordinates and diagram) in the report</label>`}
     <button id="r-print">Print report</button><div id="r-out"></div>
     ${m.state === "decided" ? `<div class="card" id="r-follow"><p><strong>Create follow-up</strong> <span class="muted">Mismatched or inconclusive items only — matched items are excluded.</span></p><div id="r-fitems"></div><label>Site<input id="r-fsite" type="text" /></label><label>Deadline<input id="r-fdl" type="datetime-local" /></label><p>Deadline time zone (required, choose one): <span id="r-ftzrow"></span></p><label>Access code<input id="r-fcode" type="password" autocomplete="off" /></label><button id="r-fgo">Create follow-up</button><div id="r-fout"></div><div id="r-fdone"></div></div>` : ""}`;
+  bindMapButton(geo);
   // R1e: every recorded decision bumps this counter. A shown AI brief is then
   // marked out of date (never silently kept), and the summary is re-read.
   let decisionEpoch = 0;
@@ -1183,7 +1203,9 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
             urls.push(null);
           }
         }
-        w.document.write(reportDocument(data, urls));
+        // M1: coordinates go into the report only when the reviewer opts in.
+        const withLoc = (document.getElementById("r-printloc") as HTMLInputElement | null)?.checked === true;
+        w.document.write(reportDocument(data, urls, withLoc ? locationSectionHtml(geo, true) : null));
         w.document.close();
         await waitReportImages(w.document);
         w.print();

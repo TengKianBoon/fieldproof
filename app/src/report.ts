@@ -248,7 +248,9 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
 // print headers/footers). photoUrls runs parallel to data.items: a same-
 // origin evidence blob URL, or null for the honest placeholder. All text
 // comes pre-escaped from buildReport and is inserted WITHOUT re-escaping.
-export function reportDocument(data: ReportData, photoUrls: Array<string | null>): string {
+// M1: `location` is pre-built, number-only HTML from locationMap, passed only
+// when the reviewer opts in; the default report stays coordinate-free.
+export function reportDocument(data: ReportData, photoUrls: Array<string | null>, location: string | null = null): string {
   const blocks: string[] = [];
   for (let i = 0; i < data.items.length; i++) {
     const row = data.items[i];
@@ -278,12 +280,14 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `.card{border:1px solid #999;border-radius:.5rem;padding:.75rem;margin:.6rem 0;page-break-inside:avoid}`
     + `img{width:100%}.muted{color:#555;font-size:.9rem}.err{color:#a00;font-weight:600}`
     + `.hash{word-break:break-all;font-size:.8rem}`
+    + `.geo svg{display:block;margin:.4rem 0;max-width:100%;height:auto}`
     + `.box{position:relative;display:inline-block;max-width:100%}.box img{display:block}@media print{.card img{max-height:8cm;width:auto;max-width:100%;object-fit:contain}.card{break-inside:avoid}}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#fff;color:#111;border:1px solid #111;font-size:.8rem;print-color-adjust:exact;-webkit-print-color-adjust:exact}`
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p>Summary: ${resc(summaryCompact(data.summary))}</p>`
     + (data.brief === null ? "" : `<p>Brief: ${[data.brief.title, data.brief.role, data.brief.instructions].filter((x): x is string => x !== null).join(" · ")}</p>`)
     + (data.checkin === null ? "" : `<p>Check-in: ${data.checkin.status}${data.checkin.distanceM === null ? "" : ` (${Math.round(data.checkin.distanceM)} m)`} · accuracy ${data.checkin.band}${data.checkin.stale ? " · stale" : ""}</p><p class="muted">Device location at check-in. Not the photo capture location, and not proof of attendance.</p>`)
+    + (location === null ? "" : location)
     + (data.followUpOf === null ? "" : `<p>Follow-up of mission ${data.followUpOf} — parent items: ${data.parentItemIds.join(", ")}</p>`)
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
     + group("Awaiting client decision", data.unresolved)
