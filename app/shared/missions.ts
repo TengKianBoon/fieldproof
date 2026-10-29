@@ -74,14 +74,19 @@ export class Missions {
     return ok(m);
   }
 
-  create(siteLabel: string, expected: ExpectedItem[], deadline: string): Result<Mission> {
+  create(
+    siteLabel: string,
+    expected: ExpectedItem[],
+    deadline: string,
+    followup?: { parentId: string; parentItemIds: string[] },
+    missionId?: string,
+  ): Result<Mission> {
     if (expected.length < MIN_ITEMS || expected.length > MAX_ITEMS) return fail("bad_item_count");
     for (const e of expected) {
       if (typeof e.expectedLabel !== "string" || !CODE_RE.test(e.expectedLabel)) return fail("bad_label");
     }
-    const missionId = newId("m");
     const m: Mission = {
-      missionId,
+      missionId: missionId ?? newId("m"),
       version: 0,
       siteLabel,
       expected,
@@ -93,6 +98,11 @@ export class Missions {
       reviewerDecision: {},
       createdAt: new Date().toISOString(),
     };
+    // Stage 2b-1: parent-bound follow-up metadata, set server-side only.
+    if (followup !== undefined) {
+      m.followUpOf = followup.parentId;
+      m.parentItemIds = [...followup.parentItemIds];
+    }
     for (const e of expected) {
       m.observed[e.itemId] = {
         itemId: e.itemId, observedLabel: null, readability: "unreadable",
@@ -101,7 +111,7 @@ export class Missions {
     }
     transitionMission("draft", "open");
     m.state = "open";
-    if (!this.store.cas(this.key(missionId), null, JSON.stringify(m))) return fail("exists");
+    if (!this.store.cas(this.key(m.missionId), null, JSON.stringify(m))) return fail("exists");
     return ok(m);
   }
 

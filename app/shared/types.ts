@@ -44,6 +44,9 @@ export interface Mission {
   workerId: string | null;
   reviewerDecision: Record<string, string>;
   createdAt: string;
+  // Stage 2b-1: parent-bound follow-up metadata. Absent on original missions.
+  followUpOf?: string;
+  parentItemIds?: string[];
 }
 
 export interface Result<T> {
