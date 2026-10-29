@@ -1,59 +1,100 @@
-# FieldProof
+# FieldProof by 180Climate
 
-FieldProof is a field-evidence product for a remote requester and an on-site worker. The requester opens a collection mission for labelled boxes; the worker photographs them on a phone; a server-side reader checks what is on each label; a reviewer confirms the outcome; and the mission exports a JSON evidence pack (mission record, readings, boxes, decisions).
+### Field evidence people can trust.
 
-Demo flow: one supplier collection, three labelled boxes (B12, B17, B23) against a synthetic delivery note. An unreadable label triggers a targeted close-up while the worker is still on site (at most two, then inconclusive). An expected B17 that reads as B71 becomes an evidence-linked discrepancy a human must review — the app never calls insufficient evidence a match.
+![FieldProof: a client sets the field brief, the field professional is guided item by item on a phone, Meta's Muse Spark reads each label, and a person decides, with an evidence report](docs/images/fieldproof-hero.jpg)
 
-Designed for 180Climate's fieldworks network.
+**Live demo** and **3-minute video**: links added at release. · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
 
-## How Meta models are used
+FieldProof is a field assignment and evidence-review workflow. A client requests a field check. The field professional is guided item by item on their phone. **Meta's Muse Spark** reads each tag, FieldProof flags what needs a closer look, and **a person makes every decision**, with an evidence report and targeted follow-ups.
 
-- **muse-spark-1.3** reads each captured label through the Responses API with a strict JSON schema (`readability`, `lot_code`), `store: false`, and no expected values in the prompt. Unknown content is instructed to return null rather than a guess — a reader instruction, not a guarantee.
-- **sam-3.1** locates the label box on each stored photo (boxes only, best confidence, normalised 0–1). The reviewer sees it as an "AI-located label" rectangle when a box is present; otherwise the reviewer sees "none found" or an "unavailable" note with the per-item diagnostic.
-- The **Spark function tool** `create_field_mission` drafts a mission from the requester's plain-English description (strict schema, forced tool choice). The agent only drafts: a human confirms and edits the fields before anything is created.
-- Every model call reserves its maximum cost from a daily ledger first and settles once afterwards; timed-out or uncertain calls settle at the reserved maximum.
+Built for **Meta's Global AI Developer Hackathon** (Startup track).
 
-## Architecture
+## Why it matters
+
+In forests, mines and property due diligence, field work often ends with photos in a chat and paperwork that is hard to check. Which bag was photographed? What did the tag say? Who decided when it didn't match? FieldProof makes those answers part of the record.
+
+It is the evidence layer of **180Climate's Fieldwork** direction: connecting the people who need answers from the ground with the professionals who can go and get them.
+
+## How it works
+
+1. **Client brief.** The client describes the check: site, items, deadline, and optional photo tips. They can type it, ask Muse Spark to draft it from a plain request, or draft it from a photo of a delivery note. A person confirms every field before anything is created.
+2. **Guided capture.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. An optional, consented location check-in records where the device was.
+3. **AI reading.** Muse Spark reads each tag on the server and is instructed to answer "unclear" rather than guess. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is asked to locate the tag on the stored photo; when it finds one, the client sees an "AI-located label" box.
+4. **Review with suggestions.** The client sees a problems-first summary. A mismatch (B71 where B17 was expected) is flagged, never auto-corrected. FieldProof suggests what needs a closer look, and an on-request **AI brief** from Muse Spark sums up the open items. The client confirms each item.
+5. **Evidence and follow-up.** A printable evidence report and a JSON evidence pack, plus a follow-up check for just the flagged items.
+
+## Where Meta AI is used
+
+| Model | What it does in FieldProof |
+|---|---|
+| `muse-spark-1.3`, vision with a strict JSON schema | Reads each tag on the server (`store: false`, no expected codes in the prompt); instructed to return "unclear" instead of guessing |
+| `muse-spark-1.3`, function tool `create_field_mission` | Drafts a check from a plain request; a person confirms |
+| `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
+| `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
+| `sam-3.1` | Locates the tag on the stored photo, when found |
+
+## Designed to be trusted
+
+- The field professional **never sees the expected codes** or the comparison results.
+- **Unclear means unclear:** FieldProof asks for a close-up instead of guessing.
+- **A person decides every item.** Mismatches are flagged, never auto-corrected, and AI suggestions never decide.
+- **Spend-safe model calls:** each call reserves its maximum cost in a daily ledger before it runs, under a hard ceiling, and a storage retry never repeats a paid call.
+- **Role-scoped links** for client and field professional: signed, expiring, and never carried in query strings. Creating a check in production needs an access code.
+- **Honest fingerprints:** SHA-256 on the phone and the server shows the stored bytes are unchanged. It does not prove what the camera saw, and the report says so.
+- **Location is optional and consented.** A check-in is the device's location at that moment, not the photo's location and not proof of attendance.
+
+## Judge quick-start
+
+You need a phone (or a second screen) and about two minutes. The [judge kit](docs/judge-kit/) has synthetic tags and a sample delivery note.
+
+1. Open the live demo → **Start a field check** → enter the access code from the submission notes.
+2. Create a check for **B12, B17 and B23**: type it, or choose `docs/judge-kit/sample-delivery-note.png` → **Draft from delivery note**, pick a time zone, and confirm.
+3. Open the field professional link on a phone. Photograph the judge-kit tags shown on another screen: **B12**, then **B71 for the B17 item** (a deliberate look-alike), then **B23**. Then **Send for review**.
+4. Open the review link: see the flagged mismatch and the suggestion, ask for the AI brief, decide each item, then **Print report** or **Create follow-up**.
+
+## Run it yourself
+
+Prerequisites: Node 24 and npm.
+
+```sh
+npm --prefix app install
+node app/scripts/gen-fixtures.mts   # synthetic test fixtures
+node app/scripts/gen-images.mts     # synthetic label images (self-checking)
+npm test                            # full automated test suite
+npm --prefix app run build          # phone UI into app/dist
+```
+
+Deployment settings are in [docs/deploy-env.md](docs/deploy-env.md) (variable names only; secrets live in the Netlify UI, never in git). A deployed site answers `GET /.netlify/functions/health` with the app version and configuration booleans only.
 
 ```mermaid
 flowchart LR
-    phone["Phone browser<br/>#/new · #/work · #/review"] --> api["Netlify Functions<br/>15 endpoints"]
-    api --> blobs["Netlify Blobs<br/>missions · uploads · day ledger"]
-    api --> meta["Meta API<br/>Spark reader · SAM boxes · agent drafts"]
-    blobs --> reviewer["Reviewer<br/>photos · decisions · export pack"]
+    client["Client<br/>brief · review · report"] --> api["Netlify Functions"]
+    field["Field professional<br/>phone link · guided capture"] --> api
+    api --> blobs["Netlify Blobs<br/>checks · photos · daily spend ledger"]
+    api --> spark["Meta Muse Spark<br/>tag reading · drafts · AI brief"]
+    api --> sam["Meta SAM 3.1<br/>tag location"]
 ```
 
-Each request runs its existing logic inside one per-request transact over Blobs (conditional writes with bounded retry); photo bytes travel outside the transact, bytes first. With `READER=mock` the label reader and the box are fixed stand-ins, so the full loop runs with no model calls.
+Each request runs inside one storage scope over Netlify Blobs, with conditional writes and a bounded retry. With `READER=mock`, the full loop runs with no model calls.
 
-## Integrity and safety
+## Built during the Hackathon
 
-- SHA-256 on both sides: the browser hashes each photo, the server re-hashes every chunk and the assembled file. Hashes prove the bytes are unchanged, not that a photo shows the real box.
-- Role links (requester, worker, reviewer) are HMAC-signed, expire, and are mission-scoped. Tokens travel in fragments, bodies, or headers — never in query strings. `#/new` additionally needs a requester access code in production.
-- Revocation is currently process-scoped and does not survive a restart (persistence is deferred). Do not treat it as durable: an instance-local revocation may still allow a revoked link on another instance.
-- A daily spend ceiling (US$2 demo default, `LEDGER_CEILING_USD` otherwise) fails closed, and production refuses to run without its secret, blob store, and access code.
-- The worker's view is a capture brief: no expected labels, no reviewer decisions.
+FieldProof was built during Meta's Global AI Developer Hackathon. Hacking officially began on **26 Oct 2026 at 16:24 UTC**; the first commit in this repository is **27 Oct 2026, 03:12 UTC**, and the full history is preserved. Netlify's deploy records corroborate the timeline.
 
-## Run it
+Existed before the event (and not in this repository): the 180Climate brand and its Fieldwork concept.
 
-Prerequisites: Node 24, npm.
+## What's next
 
-```sh
-node app/scripts/gen-fixtures.mts   # synthetic dev + held-out fixtures
-node app/scripts/gen-images.mts     # synthetic label PNGs (self-verify PASS)
-npm test            # full suite (node --test)
-npm --prefix app run build   # phone UI into app/dist
-```
-
-Deploy settings live in [docs/deploy-env.md](docs/deploy-env.md) (variable names only — secrets go in the Netlify UI, never in git).
-
-## Built during the Meta AI Developer Hackathon
-
-Repo started 27 Oct 2026. Shipped so far: the mocked full mission loop (consent, capture, close-up, review, export); chunked uploads with server content hashes; versioned storage with conflict surfacing; the day-bounded model budget ledger; the phone UI with camera capture and reviewer screens; evidence photo serving; Spark reading, SAM boxes, and agent drafts behind mock-first flags; and the production requester access code.
+- **Next:** AI agents requesting field checks on a client's behalf.
+- **Future:** hands-free capture on display glasses.
+- Pilot jobs in the 180Climate Fieldwork network.
 
 ## Honest limits
 
-- This is a private demo, not a production release. No pilot has run; no real customer data has been collected.
-- Photos and mission records are stored in US Blobs.
-- Revocation is per-instance memory and does not survive a restart: a revoked link may still work on another instance.
-- The evidence pack is unsigned JSON. Byte hashes prove the bytes are unchanged, not that a photo shows the real box.
-- Live evidence so far (one phone mission): Create, three uploaded photos read by Spark as B12/B17/B23 matched, send for review, reviewer decisions, Finish, and JSON export all passed. SAM green boxes failed that pass (boxes absent, no diagnostics); the per-item S8 diagnostics are deployed but not yet live-verified — a follow-up smoke test did not get past mission creation, so no model calls ran. Blur/close-up, intentional mismatch, and agent drafts have not been evidenced live and are not claimed here.
+- A demo with synthetic tags. No pilot has run, and no real customer data has been collected.
+- Photos and records are stored in Netlify Blobs in the US; regional hosting comes before any pilot.
+- Model readings can be wrong. That is why a person decides every item.
+- Link revocation is per server instance and does not survive a restart.
+- The evidence pack is unsigned JSON.
+- FieldProof does not certify regulatory compliance.
