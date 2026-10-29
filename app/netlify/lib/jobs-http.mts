@@ -3,7 +3,7 @@
 // reuse the mission link format with the job id in the mission slot, so the
 // existing signing, expiry and revocation apply unchanged.
 import { mintLink, verifyLink } from "../../shared/links.ts";
-import { jobsEnabled } from "../../shared/fieldJobs.ts";
+import { hostOf, jobsEnabled, type DeployInfo } from "../../shared/fieldJobs.ts";
 import { isRevoked, json, secret } from "./_ctx.mts";
 import { ok, fail, type Result } from "../../shared/types.ts";
 
@@ -15,8 +15,12 @@ export const AGENT_ROLE = "job-agent";
 const LINK_MS = 14 * 24 * 3600 * 1000;
 const JOB_ID_RE = /^j_[A-Za-z0-9-]{8,64}$/;
 
-export function jobsOff(): Response | null {
-  return jobsEnabled(process.env) ? null : json(404, { error: "jobs_disabled" });
+// J4: the part of Netlify's function context that the Jobs switch reads.
+export interface DeployCtx { deploy?: DeployInfo }
+
+export function jobsOff(req: Request, context?: DeployCtx): Response | null {
+  const on = jobsEnabled(process.env, { host: hostOf(req.url), deploy: context?.deploy });
+  return on ? null : json(404, { error: "jobs_disabled" });
 }
 
 export function validJobId(v: unknown): v is string {

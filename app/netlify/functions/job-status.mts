@@ -3,10 +3,10 @@
 // contacts, item codes or links.
 import { blobsScope, json, store } from "../lib/_ctx.mts";
 import { FieldJobs, agentStatusView, type FieldJob } from "../../shared/fieldJobs.ts";
-import { jobsOff, needStatusReader, validJobId } from "../lib/jobs-http.mts";
+import { jobsOff, needStatusReader, validJobId, type DeployCtx } from "../lib/jobs-http.mts";
 
-export default async function handler(req: Request): Promise<Response> {
-  const off = jobsOff();
+export default async function handler(req: Request, context?: DeployCtx): Promise<Response> {
+  const off = jobsOff(req, context);
   if (off !== null) return off;
   if (req.method !== "POST") return json(405, { error: "method" });
   let body: Record<string, unknown>;

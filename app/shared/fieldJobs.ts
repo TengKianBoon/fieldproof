@@ -81,8 +81,31 @@ export interface FieldJob {
   log: Array<{ at: string; event: string }>;
 }
 
-export function jobsEnabled(env: Record<string, string | undefined>): boolean {
-  return (env.JOBS_ENABLED ?? "").trim().toLowerCase() === "on";
+// J4: Jobs stays OFF by default. JOBS_ENABLED=on turns it on everywhere (the
+// live site only with the owner's go); any other set value (e.g. "off") turns
+// it off everywhere. Unset, it is on in exactly one place: the named test
+// deploy reached at JOBS_TEST_HOST (a Netlify deploy alias, opted into with
+// `netlify deploy --alias jobs-pilot`), and only while that deploy is not the
+// site's published deploy. The same deploy's own permalink, older deploys,
+// the live site, and anything without deploy information all stay off.
+export const JOBS_TEST_HOST = "jobs-pilot--fieldproof-180climate.netlify.app";
+
+export interface DeployInfo { published?: unknown }
+export interface JobsWhere { host?: string; deploy?: DeployInfo | null }
+
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function jobsEnabled(env: Record<string, string | undefined>, where?: JobsWhere | null): boolean {
+  const v = (env.JOBS_ENABLED ?? "").trim().toLowerCase();
+  if (v === "on") return true;
+  if (v !== "") return false;
+  return where?.deploy?.published === false && (where.host ?? "").toLowerCase() === JOBS_TEST_HOST;
 }
 
 function sha(s: string): string {

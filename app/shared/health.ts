@@ -2,7 +2,7 @@
 // configuration booleans only: no secret values, no store access, no model
 // calls, and nothing echoed from the request.
 import { hasModelKey } from "./modelenv.ts";
-import { jobsEnabled } from "./fieldJobs.ts";
+import { jobsEnabled, type JobsWhere } from "./fieldJobs.ts";
 
 // Kept in step with app/package.json (tested).
 export const APP_VERSION = "0.1.0";
@@ -23,7 +23,7 @@ export interface HealthSummary {
 
 const isSet = (v: string | undefined): boolean => typeof v === "string" && v !== "";
 
-export function healthSummary(env: Record<string, string | undefined>): HealthSummary {
+export function healthSummary(env: Record<string, string | undefined>, where?: JobsWhere | null): HealthSummary {
   // Mirrors ledgerCeilingMillicents: missing means the demo default.
   const raw = env.LEDGER_CEILING_USD;
   const n = Number(raw);
@@ -48,6 +48,6 @@ export function healthSummary(env: Record<string, string | undefined>): HealthSu
     linkSecretSet,
     accessCodeSet,
     spendCeilingValid,
-    jobsEnabled: jobsEnabled(env),
+    jobsEnabled: jobsEnabled(env, where),
   };
 }

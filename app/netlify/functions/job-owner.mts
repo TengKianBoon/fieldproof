@@ -6,10 +6,10 @@
 import { blobsScope, json, store } from "../lib/_ctx.mts";
 import { FieldJobs, ownerView, type FieldJob } from "../../shared/fieldJobs.ts";
 import { ok, type Result } from "../../shared/types.ts";
-import { bidderToken, ensureMission, jobsOff, missionToken, needOwner, statusFor, validJobId } from "../lib/jobs-http.mts";
+import { bidderToken, ensureMission, jobsOff, missionToken, needOwner, statusFor, validJobId, type DeployCtx } from "../lib/jobs-http.mts";
 
-export default async function handler(req: Request): Promise<Response> {
-  const off = jobsOff();
+export default async function handler(req: Request, context?: DeployCtx): Promise<Response> {
+  const off = jobsOff(req, context);
   if (off !== null) return off;
   if (req.method !== "POST") return json(405, { error: "method" });
   let body: Record<string, unknown>;

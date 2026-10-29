@@ -6,10 +6,10 @@
 import { blobsScope, json, store } from "../lib/_ctx.mts";
 import { requesterIdentity } from "../../shared/identity.ts";
 import { FieldJobs } from "../../shared/fieldJobs.ts";
-import { jobsOff, ownerToken, validJobId } from "../lib/jobs-http.mts";
+import { jobsOff, ownerToken, validJobId, type DeployCtx } from "../lib/jobs-http.mts";
 
-export default async function handler(req: Request): Promise<Response> {
-  const off = jobsOff();
+export default async function handler(req: Request, context?: DeployCtx): Promise<Response> {
+  const off = jobsOff(req, context);
   if (off !== null) return off;
   if (req.method !== "POST") return json(405, { error: "method" });
   const id = requesterIdentity(process.env, req.headers.get("x-requester-code"));

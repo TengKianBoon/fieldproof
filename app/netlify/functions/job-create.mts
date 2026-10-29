@@ -8,11 +8,11 @@ import { requesterIdentity } from "../../shared/identity.ts";
 import { parseAbsolute } from "../../shared/timezone.ts";
 import { FieldJobs, idempotentJobId, validateJobInput, type FieldJob } from "../../shared/fieldJobs.ts";
 import { ok, fail, type Result } from "../../shared/types.ts";
-import { agentToken, jobsOff, ownerToken, statusFor } from "../lib/jobs-http.mts";
+import { agentToken, jobsOff, ownerToken, statusFor, type DeployCtx } from "../lib/jobs-http.mts";
 
 
-export default async function handler(req: Request): Promise<Response> {
-  const off = jobsOff();
+export default async function handler(req: Request, context?: DeployCtx): Promise<Response> {
+  const off = jobsOff(req, context);
   if (off !== null) return off;
   if (req.method !== "POST") return json(405, { error: "method" });
   const id = requesterIdentity(process.env, req.headers.get("x-requester-code"));

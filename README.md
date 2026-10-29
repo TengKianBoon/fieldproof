@@ -119,7 +119,7 @@ Add it to any MCP client that runs local (stdio) servers, with Node 24:
 
 ## Jobs and bids (pilot, behind a switch)
 
-"Hire a human" for field evidence, end to end. With `JOBS_ENABLED=on`:
+"Hire a human" for field evidence, end to end. It is off unless `JOBS_ENABLED=on`, except on one named Netlify test alias (`jobs-pilot`) while that deploy is not the live site. `JOBS_ENABLED=off` turns it off everywhere. When on:
 
 1. **A client, or their AI agent, drafts a job:** outcome, broad region, dates, a **budget range**, and the items to evidence. An agent's job stays a draft until a person claims it with the access code and publishes it.
 2. **The client invites professionals by private links,** one per person. Each professional sees the job (never the expected codes) and only their own bid.
