@@ -43,6 +43,7 @@ async function get(name: string, params: Record<string, string>, token: string, 
 
 // Pure route parsing for hash links (#/new, #/work/<mid>/<tok>, #/review/...).
 export type Route =
+  | { name: "landing" }
   | { name: "new" }
   | { name: "work"; missionId: string; token: string }
   | { name: "review"; missionId: string; token: string }
@@ -51,6 +52,10 @@ export type Route =
 export function parseHashRoute(hash: string): Route {
   const frag = hash.startsWith("#") ? hash.slice(1) : hash;
   const parts = frag.split("/").filter((p) => p !== "");
+  // F2: "#/" is the presentation landing; every existing route stays. A bare
+  // "" (no hash at all) keeps its long-standing unknown contract - the router
+  // always sets a hash before rendering, so this input never reaches a view.
+  if (parts.length === 0) return hash === "" ? { name: "unknown" } : { name: "landing" };
   if (parts.length === 1 && parts[0] === "new") return { name: "new" };
   if (parts.length === 3 && (parts[0] === "work" || parts[0] === "review") && parts[1] !== "" && parts[2] !== "") {
     return { name: parts[0], missionId: parts[1], token: parts[2] } as Route;

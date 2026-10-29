@@ -1,22 +1,51 @@
-/* S2b plain mobile CSS: no framework, large tap targets, Android/iOS readable. */
-:root { color-scheme: light; }
-body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 28rem; padding: 1rem; line-height: 1.4; }
-h1 { font-size: 1.4rem; margin: 0 0 0.75rem; }
-h2 { font-size: 1.15rem; margin: 1rem 0 0.5rem; }
-button, .btn { display: block; width: 100%; margin: 0.5rem 0; padding: 0.9rem; font-size: 1.05rem; border-radius: 0.5rem; border: 1px solid #333; background: #fff; }
+/* F2 visual tokens: forest/deep greens, amber accent, ink on paper.
+   System type scale 14/16/20/28/40. Phone-first, up to desktop. */
+:root {
+  color-scheme: light;
+  --forest: #123826;
+  --deep: #0a2118;
+  --amber: #f2c14e;
+  --ink: #111;
+  --paper: #fff;
+  --muted: #5b6b62;
+  --ok: #1f7a4d;
+  --warn: #b7791f;
+  --bad: #b42318;
+}
+body { font-family: system-ui, sans-serif; font-size: 1rem; margin: 0 auto; max-width: 28rem; padding: 1rem; line-height: 1.4; color: var(--ink); background: var(--paper); }
+h1 { font-size: 1.75rem; margin: 0 0 0.75rem; }
+h2 { font-size: 1.25rem; margin: 1rem 0 0.5rem; }
+button, .btn { display: block; width: 100%; margin: 0.5rem 0; padding: 0.9rem; min-height: 44px; font-size: 1.05rem; border-radius: 0.75rem; border: 1px solid var(--forest); background: var(--paper); color: var(--forest); font-weight: 600; box-sizing: border-box; }
 button:disabled { opacity: 0.45; }
-button.primary { background: #111; color: #fff; }
-input[type="text"], input[type="password"], input[type="datetime-local"], input[type="file"], textarea { display: block; width: 100%; margin: 0.4rem 0; padding: 0.7rem; font-size: 1rem; box-sizing: border-box; }
+button.primary { background: var(--forest); color: var(--paper); }
+button:focus-visible, .btn:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+input[type="text"], input[type="password"], input[type="datetime-local"], input[type="file"], textarea { display: block; width: 100%; margin: 0.4rem 0; padding: 0.7rem; min-height: 44px; font-size: 1rem; box-sizing: border-box; border: 1px solid var(--muted); border-radius: 0.5rem; background: var(--paper); color: var(--ink); }
+input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; accent-color: var(--forest); }
 label { display: block; margin: 0.6rem 0 0.2rem; font-weight: 600; }
-.card { border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.75rem; margin: 0.6rem 0; }
+.card { border: 1px solid var(--muted); border-radius: 0.75rem; padding: 0.75rem; margin: 0.6rem 0; background: var(--paper); }
 .card img { width: 100%; border-radius: 0.25rem; }
 .row { display: flex; gap: 0.5rem; }
 .row > * { flex: 1; }
-.muted { color: #555; font-size: 0.9rem; }
+.muted { color: var(--muted); font-size: 0.875rem; }
 .links a { display: block; word-break: break-all; margin: 0.4rem 0; }
 pre { white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; font-size: 0.8rem; }
-.err { color: #a00; font-weight: 600; }
-.ok { color: #070; font-weight: 600; }
+.err { color: var(--bad); font-weight: 600; border-left: 4px solid var(--bad); padding: 0.5rem 0.75rem; }
+.ok { color: var(--ok); font-weight: 600; border-left: 4px solid var(--ok); padding: 0.5rem 0.75rem; }
+/* F2 status chips: worker states read neutral; client states carry meaning. */
+.chip { display: inline-block; padding: 0.15rem 0.6rem; font-size: 0.875rem; font-weight: 600; border: 1px solid var(--forest); border-radius: 999px; color: var(--forest); background: var(--paper); white-space: nowrap; }
+.chip-ok { color: var(--ok); border-color: var(--ok); }
+.chip-bad { color: var(--bad); border-color: var(--bad); }
+.chip-warn { color: var(--ink); border-color: var(--warn); }
+/* F2 landing: topbar, hero, steps, Now/Next/Future strip, footer. */
+.topbar { background: var(--deep); color: var(--paper); border-radius: 0.75rem; padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; }
+.topbar p { margin: 0; font-size: 1rem; }
+.topbar span { color: var(--amber); font-size: 0.875rem; }
+.hero { padding: 0.5rem 0 0.25rem; }
+.hero-title { font-size: 2.5rem; line-height: 1.1; margin: 0.5rem 0; }
+.hero-sub { font-size: 1rem; }
+.hero button { margin-top: 0.5rem; }
+#l-steps ol, #l-strip ul { margin: 0.4rem 0; padding-left: 1.25rem; }
+#l-steps li, #l-strip li { margin: 0.35rem 0; }
 /* Author display rules (e.g. .row flex) otherwise override the hidden
    attribute; hidden must always win so success states can hide controls. */
 [hidden] { display: none !important; }
@@ -27,4 +56,11 @@ pre { white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; font-size: 0.
 @media print {
   button, .links, #f-last, #r-items, #r-out, #r-print, #r-finish, #r-dl { display: none !important; }
   body { max-width: none; }
+}
+
+/* F2 desktop: wider measure with a two-column step grid; 360px phones keep
+   the single column above. */
+@media (min-width: 48rem) {
+  body { max-width: 44rem; }
+  #l-steps ol { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1.25rem; }
 }

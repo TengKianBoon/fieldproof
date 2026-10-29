@@ -5,6 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
+import { landingHTML } from "./landing.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 
@@ -50,7 +51,7 @@ async function copyText(t: string): Promise<void> {
 
 export function startRouter(): void {
   window.addEventListener("hashchange", () => void render());
-  if (!window.location.hash) window.location.hash = "#/new";
+  if (!window.location.hash) window.location.hash = "#/";
   void render();
 }
 
@@ -59,13 +60,38 @@ async function render(): Promise<void> {
   const r = parseHashRoute(window.location.hash);
   const el = app();
   try {
-    if (r.name === "new") viewNew(el);
+    if (r.name === "landing") viewLanding(el);
+    else if (r.name === "new") viewNew(el);
     else if (r.name === "work") await viewWork(el, r.missionId, r.token);
     else if (r.name === "review") await viewReview(el, r.missionId, r.token);
     else el.innerHTML = `<h1>FieldProof</h1><p class="err">Unknown link. Ask the client for a fresh field professional or client link.</p>`;
   } catch (e) {
     el.innerHTML = `<h1>FieldProof</h1>${errBox(e)}`;
   }
+}
+
+function viewLanding(el: HTMLElement): void {
+  // F2: static presentation only - no fetch, no tokens, no behavior.
+  el.innerHTML = landingHTML();
+  (document.getElementById("l-start") as HTMLButtonElement).onclick = () => {
+    window.location.hash = "#/new";
+  };
+  (document.getElementById("l-how") as HTMLButtonElement).onclick = () => {
+    document.getElementById("l-steps")?.scrollIntoView();
+  };
+}
+
+// F2 chips: worker states stay neutral words; client states carry the
+// comparison meaning. Presentation only - gates compare raw codes.
+function workerChip(state: string): string {
+  return `<span class="chip">${esc(plainWorkerItem(state))}</span>`;
+}
+
+function clientChip(state: string): string {
+  const cls = state === "matched" || state === "confirmed_match" ? "chip-ok"
+    : state === "mismatched" || state === "confirmed_mismatch" ? "chip-bad"
+    : "chip-warn";
+  return `<span class="chip ${cls}">${esc(plainItem(state))}</span>`;
 }
 
 function accessCode(): string {
@@ -561,7 +587,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   // with Next / Send-for-review guidance. The brief state is neutral here.
   const finished = cur.state === "received";
   const card = `<div class="card" data-item="${esc(cur.itemId)}">
-      <p><strong>${esc(cur.itemId)}</strong> — ${esc(plainWorkerItem(cur.state))}</p>
+      <p><strong>${esc(cur.itemId)}</strong> — ${workerChip(cur.state)}</p>
       ${cur.hint === undefined || cur.hint === "" ? "" : `<p class="muted">Tip: ${esc(cur.hint)}</p>`}
       ${finished
         ? `<p class="muted">Photo received - this item is done. Continue with Next, or Send for review when every item shows Photo received.</p>`
@@ -748,7 +774,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     cards.push(`<div class="card" data-item="${esc(e.itemId)}">
-      <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${esc(plainItem(o.state))})</p>
+      <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${clientChip(o.state)})</p>
       <div data-photo="${esc(e.itemId)}"><p class="muted">Loading photo…</p></div>
       <div class="row"${m.state === "in_review" ? "" : " hidden"}><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
       <button data-inc="${esc(e.itemId)}"${m.state === "in_review" ? "" : " hidden"}>Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
