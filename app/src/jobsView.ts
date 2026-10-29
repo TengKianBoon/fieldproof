@@ -20,6 +20,32 @@ export function exampleFeeLine(amount: number, currency: string): string {
   return `Example introduction fee (not yet live): ${FEE_EXAMPLE_PCT}% = ${fee} ${currency}`;
 }
 
+// J2c: an instant is shown as plain local time with its zone named (e.g.
+// "31 Oct 2026, 08:00 SGT"), never as raw ISO text. The zone is the viewer's
+// device zone unless one is given; anything unreadable is shown as it came
+// (callers escape it).
+export function jobWhen(iso: string, timeZone?: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  const fields = {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short",
+  } as const;
+  let zone = timeZone;
+  if (zone === undefined) {
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    } catch {
+      zone = "UTC";
+    }
+  }
+  try {
+    return new Intl.DateTimeFormat("en-GB", { ...fields, timeZone: zone }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat("en-GB", { ...fields, timeZone: "UTC" }).format(d);
+  }
+}
+
 // Wall-clock text plus an explicitly chosen zone becomes an absolute
 // instant; anything else is null and the caller must ask, never assume.
 export function jobInstant(wall: string, zone: string | null): string | null {
@@ -105,7 +131,7 @@ export function renderOwner(
     + (job.deliverables === "" ? "" : `<p>${esc(job.deliverables)}</p>`)
     + (job.skills.length === 0 ? "" : `<p class="muted">Skills: ${job.skills.map(esc).join(", ")}</p>`)
     + (job.safetyNotes === "" ? "" : `<p class="muted">Safety: ${esc(job.safetyNotes)}</p>`)
-    + `<p class="muted">Bids close ${esc(job.bidDeadline)} · ${job.items.length} items to photograph at ${esc(job.siteLabel)}</p></div>`;
+    + `<p class="muted">Bids close ${esc(jobWhen(job.bidDeadline))} · ${job.items.length} items to photograph at ${esc(job.siteLabel)}</p></div>`;
   let action = "";
   if (job.status === "draft") {
     action = `<div class="row"><button id="jo-publish" class="primary">Publish</button><button id="jo-cancel">Cancel job</button></div>`;
@@ -138,7 +164,7 @@ export function renderOwner(
       + fee + sel + `</div>`;
   }).join("");
   const engaged = job.engagement === null ? "" : `<div class="card" id="jo-engaged"><p><strong>Professional accepted</strong></p>`
-    + `<p>${esc(job.engagement.providerName)} · ${esc(String(job.engagement.value.amount))} ${esc(job.engagement.value.currency)} · accepted ${esc(job.engagement.acceptedAt)}</p>`
+    + `<p>${esc(job.engagement.providerName)} · ${esc(String(job.engagement.value.amount))} ${esc(job.engagement.value.currency)} · accepted ${esc(jobWhen(job.engagement.acceptedAt))}</p>`
     + `<p class="muted">Scope: ${esc(job.engagement.scope)}</p>`
     + (opts.check === undefined || opts.check === null ? ""
       : `<p><a href="${esc(reviewLink(opts.origin, opts.check.missionId, opts.check.reviewToken))}">Open the FieldProof review</a></p>`)
@@ -197,7 +223,7 @@ export function renderBid(view: BidderJobView, check: BidderCheck | null, origin
     + `<p class="muted">${esc(view.region)} · ${esc(view.windowStart)} to ${esc(view.windowEnd)} · budget ${esc(String(view.budget.min))}–${esc(String(view.budget.max))} ${esc(view.budget.currency)}</p>`
     + (view.skills.length === 0 ? "" : `<p class="muted">Skills: ${view.skills.map(esc).join(", ")}</p>`)
     + (view.safetyNotes === "" ? "" : `<p class="muted">Safety: ${esc(view.safetyNotes)}</p>`)
-    + `<p class="muted">Bids close ${esc(view.bidDeadline)} · ${esc(String(view.itemCount))} items to photograph</p>`
+    + `<p class="muted">Bids close ${esc(jobWhen(view.bidDeadline))} · ${esc(String(view.itemCount))} items to photograph</p>`
     + (view.photoHints.some((h) => h !== "")
       ? `<ul>${view.photoHints.map((h, i) => h === "" ? "" : `<li>Box ${i + 1}: ${esc(h)}</li>`).join("")}</ul>` : "")
     + `</div>`;
