@@ -4,6 +4,8 @@
 
 ![FieldProof: a client sets the field brief, the field professional is guided item by item on a phone, Meta's Muse Spark reads each label, and a person decides, with an evidence report](docs/images/fieldproof-hero.jpg)
 
+> **AI can't walk into a forest.** FieldProof lets a client, or their AI agent, ask a person on the ground for evidence. Meta's Muse Spark reads it, and a person stays in charge.
+
 **Live demo** and **3-minute video**: links added at release. · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
 
 FieldProof is a field assignment and evidence-review workflow. A client requests a field check. The field professional is guided item by item on their phone. **Meta's Muse Spark** reads each tag, FieldProof flags what needs a closer look, and **a person makes every decision**, with an evidence report and targeted follow-ups.
@@ -20,7 +22,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 
 1. **Client brief.** The client describes the check: site, items, deadline, and optional photo tips. They can type it, ask Muse Spark to draft it from a plain request, or draft it from a photo of a delivery note. A person confirms every field before anything is created.
 2. **Guided capture.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. An optional, consented location check-in records where the device was.
-3. **AI reading.** Muse Spark reads each tag on the server and is instructed to answer "unclear" rather than guess. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is asked to locate the tag on the stored photo; when it finds one, the client sees an "AI-located label" box.
+3. **AI reading.** Muse Spark reads each tag on the server and is instructed to answer "unclear" rather than guess. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is asked to locate the tag on the stored photo; when it returns one, the client sees an "AI-located label" box. On our printed test tags it has not returned a box yet, so this step can be switched off (`SAM_MODE=off`).
 4. **Review with suggestions.** The client sees a problems-first summary. A mismatch (B71 where B17 was expected) is flagged, never auto-corrected. FieldProof suggests what needs a closer look, and an on-request **AI brief** from Muse Spark sums up the open items. The client confirms each item.
 5. **Evidence and follow-up.** A printable evidence report and a JSON evidence pack, plus a follow-up check for just the flagged items.
 
@@ -32,7 +34,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 | `muse-spark-1.3`, function tool `create_field_mission` | Drafts a check from a plain request; a person confirms |
 | `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
 | `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
-| `sam-3.1` | Locates the tag on the stored photo, when found |
+| `sam-3.1` | Asked to locate the tag on the stored photo (switchable; no box returned yet on our printed test tags) |
 | `muse-spark-1.3`, function calling (agent demo) | Plans and calls FieldProof's agent tools from a plain request; a person still decides every item |
 
 ## Designed to be trusted
@@ -44,6 +46,14 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 - **Role-scoped links** for client and field professional: signed, expiring, and never carried in query strings. Creating a check in production needs an access code.
 - **Honest fingerprints:** SHA-256 on the phone and the server shows the stored bytes are unchanged. It does not prove what the camera saw, and the report says so.
 - **Location is optional and consented.** A check-in is the device's location at that moment, not the photo's location and not proof of attendance.
+
+## Built to hold up in production
+
+- **More than 300 automated tests** (`npm test`) and a strict TypeScript typecheck, including end-to-end runs of the real request handlers over mocked storage.
+- **Fail-closed production mode.** With `FIELDPROOF_ENV=production`, a missing link secret or storage backend stops the request instead of falling back, test seams are refused, and creating a check needs the access code.
+- **Health check.** `GET /.netlify/functions/health` reports `ready: true` only when every production setting is in place. It returns the version and yes/no flags, never a secret.
+- **Safe to retry.** Repeating a create with the same `idempotencyKey` returns the same check. Every write is conditional, with a bounded retry, inside one storage scope per request.
+- **Failures are visible.** If the AI brief can't be produced, the screen says so with a short reference code, and the review carries on.
 
 ## Judge quick-start
 
@@ -116,6 +126,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 ## What's next
 
 - **Next:** AI agents requesting field checks across the 180Climate Fieldwork network.
+- **Next:** WebMCP, so Meta AI can request a field check through the same three tools the MCP server offers today.
 - **Future:** hands-free capture on display glasses.
 - Pilot jobs in the 180Climate Fieldwork network.
 
@@ -124,6 +135,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - A demo with synthetic tags. No pilot has run, and no real customer data has been collected.
 - Photos and records are stored in Netlify Blobs in the US; regional hosting comes before any pilot.
 - Model readings can be wrong. That is why a person decides every item.
+- SAM 3.1 has not yet returned a label box on our printed test tags; the review then shows the photo without one.
 - Link revocation is per server instance and does not survive a restart.
 - The evidence pack is unsigned JSON.
 - Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
