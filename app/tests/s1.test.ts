@@ -45,6 +45,27 @@ describe("S1 tolerant SAM box parsing", () => {
   });
 });
 
+describe("S1b malformed box tokens never fabricate a box", () => {
+  it("empty or non-numeric values are dropped, not read as 0", () => {
+    assert.equal(parseSamBoxes("<|box;x1=;y1=;x2=0.5;y2=0.5|>"), null);
+    assert.equal(parseSamBoxes("<|box;x1=0x10;y1=0.1;x2=0.5;y2=0.5|>"), null);
+    assert.equal(parseSamBoxes("<|box;x1= ;y1=0.1;x2=0.5;y2=0.5;c=|>"), null);
+  });
+
+  it("exactly one of w or h is malformed (both absent means normalised)", () => {
+    assert.equal(parseSamBoxes("<|box;x1=0.1;y1=0.1;x2=0.5;y2=0.5;w=400|>"), null);
+    assert.equal(parseSamBoxes("<|box;x1=0.1;y1=0.1;x2=0.5;y2=0.5;h=300|>"), null);
+    assert.ok(parseSamBoxes("<|box;x1=0.1;y1=0.1;x2=0.5;y2=0.5|>") !== null);
+  });
+
+  it("null or non-object output members are skipped, not dereferenced", () => {
+    const r = parseSamResponse({ status: "completed", output: [null, 7, { type: "message", content: [null, { type: "output_text", text: "" }] }] });
+    assert.ok(r.ok);
+    assert.equal(r.text, "");
+    assert.ok(r.kinds.includes("unknown") && r.kinds.includes("message/unknown"));
+  });
+});
+
 describe("S1 empty-result diagnostics", () => {
   it("a completed result with no text at all is the documented zero matches: none", () => {
     assert.equal(samEmptyStatus("", []), "none");

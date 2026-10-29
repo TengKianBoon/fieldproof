@@ -48,12 +48,16 @@ export interface SamBox {
 // the optional confidence (c, default 0), or on integer formatting, and
 // accepts coordinates already normalised to 0-1 when w/h are absent.
 const BOX_TOKEN_RE = /<\|box;([^|>]*)\|>/g;
+const NUMBER_RE = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 function boxFromFields(f: Record<string, number>): SamBox | null {
   const x1 = f.x1, y1 = f.y1, x2 = f.x2, y2 = f.y2;
   if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return null;
   let w = f.w;
   let h = f.h;
+  // S1b: only BOTH w and h absent means normalised coordinates; exactly one
+  // present is malformed and never becomes a box.
+  if ((w === undefined) !== (h === undefined)) return null;
   if (w === undefined || h === undefined) {
     if (![x1, y1, x2, y2].every((n) => n >= 0 && n <= 1)) return null;
     w = 1;
@@ -75,7 +79,11 @@ export function parseSamBoxes(outputText: string): SamBox | null {
     for (const pair of m[1].split(";")) {
       const eq = pair.indexOf("=");
       if (eq <= 0) continue;
-      const v = Number(pair.slice(eq + 1).trim());
+      // S1b: a value must be a written number; Number("") is 0, so empty or
+      // non-numeric values are dropped instead of becoming coordinates.
+      const raw = pair.slice(eq + 1).trim();
+      if (!NUMBER_RE.test(raw)) continue;
+      const v = Number(raw);
       if (Number.isFinite(v)) fields[pair.slice(0, eq).trim().toLowerCase()] = v;
     }
     const box = boxFromFields(fields);
@@ -113,6 +121,11 @@ export function parseSamResponse(parsed: unknown): { ok: true; status: string; t
   // S1: the distinct item/part kinds seen, for samEmptyStatus diagnostics.
   const kinds = new Set<string>();
   for (const item of out) {
+    // S1b: null or non-object members are skipped, never dereferenced.
+    if (typeof item !== "object" || item === null) {
+      kinds.add("unknown");
+      continue;
+    }
     const it = item as { type?: unknown; content?: unknown };
     const itemType = typeof it.type === "string" ? it.type : "unknown";
     if (itemType !== "message" || !Array.isArray(it.content)) {
@@ -120,6 +133,10 @@ export function parseSamResponse(parsed: unknown): { ok: true; status: string; t
       continue;
     }
     for (const part of it.content) {
+      if (typeof part !== "object" || part === null) {
+        kinds.add("message/unknown");
+        continue;
+      }
       const pt = part as { type?: unknown; text?: unknown };
       kinds.add(`message/${typeof pt.type === "string" ? pt.type : "unknown"}`);
       if (pt.type === "output_text" && typeof part.text === "string") parts.push(part.text as string);
