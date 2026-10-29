@@ -30,6 +30,8 @@ export interface ReportMission {
   expected?: Array<{ itemId: string; expectedLabel: string }>;
   observed?: Record<string, ReportObserved>;
   reviewerDecision?: Record<string, string>;
+  followUpOf?: string;
+  parentItemIds?: string[];
 }
 
 export interface ReportItem {
@@ -57,6 +59,8 @@ export interface ReportData {
   mismatched: string[];
   inconclusive: string[];
   summary: ReviewSummary;
+  followUpOf: string | null;
+  parentItemIds: string[];
 }
 
 function resc(s: string): string {
@@ -188,6 +192,10 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
     mismatched,
     inconclusive,
     summary: summarizeReview(m),
+    followUpOf: typeof m.followUpOf === "string" ? resc(m.followUpOf) : null,
+    parentItemIds: Array.isArray(m.parentItemIds)
+      ? m.parentItemIds.filter((i): i is string => typeof i === "string").map((i) => resc(i))
+      : [],
   };
 }
 
@@ -229,6 +237,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p>Summary: ${resc(summaryCompact(data.summary))}</p>`
+    + (data.followUpOf === null ? "" : `<p>Follow-up of mission ${data.followUpOf} — parent items: ${data.parentItemIds.join(", ")}</p>`)
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
     + group("Awaiting reviewer decision", data.unresolved)
     + group("Confirmed mismatches", data.mismatched)

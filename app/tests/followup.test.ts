@@ -232,6 +232,39 @@ describe("Stage 2b-1 followup-create", () => {
     assert.ok(!JSON.stringify(wv).includes("B12"));
   });
 
+  it("recovers the existing child when the idem record is missing", async () => {
+    const kv = new MockBlobsKVBackend();
+    __setBlobsTestBackends({ kv, bytes: new MockBlobsBytesBackend() });
+    process.env.BLOBS_STORE = "blobs";
+    try {
+      const { default: followH } = await import("../netlify/functions/followup-create.mts");
+      await kv.setJSON("mission:p-orphan", JSON.stringify(decidedParent("p-orphan")), { onlyIfNew: true });
+      // Crash simulation: fail the idem-record commit once, after the
+      // deterministic mission write has landed.
+      const orig = kv.setJSON.bind(kv);
+      let armed = true;
+      kv.setJSON = (async (k: string, v: string, o?: { onlyIfMatch?: string; onlyIfNew?: boolean }) => {
+        if (armed && k.startsWith("followup-idem:")) {
+          armed = false;
+          return { modified: false };
+        }
+        return orig(k, v, o);
+      }) as MockBlobsKVBackend["setJSON"];
+      const body = payload("p-orphan", { idempotencyKey: "orphan" });
+      const r = await jsonOf(await post(followH, body));
+      assert.equal(armed, false);
+      assert.equal(r.status, 200);
+      const childId = String(r.body.missionId);
+      // Retry adopts the same deterministic child: one mission, no duplicate.
+      const again = await jsonOf(await post(followH, body));
+      assert.equal(again.status, 200);
+      assert.equal(String(again.body.missionId), childId);
+    } finally {
+      delete process.env.BLOBS_STORE;
+      __setBlobsTestBackends(null);
+    }
+  });
+
   it("concurrent duplicates share one child under Blobs", async () => {
     const kv = new MockBlobsKVBackend();
     __setBlobsTestBackends({ kv, bytes: new MockBlobsBytesBackend() });

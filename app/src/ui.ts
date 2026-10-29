@@ -195,6 +195,10 @@ function viewNew(el: HTMLElement): void {
     if (goBtn.disabled) return;
     goBtn.disabled = true;
     try {
+      // Stage 2b-2: stale messages never survive a new attempt or a success.
+      out.innerHTML = "";
+      (document.getElementById("f-nmsg") as HTMLElement).innerHTML = "";
+      (document.getElementById("f-dmsg") as HTMLElement).innerHTML = "";
       if (notePending && !confirmBox.checked) throw new Error("note_unconfirmed");
       const site = (document.getElementById("f-site") as HTMLInputElement).value;
       const codes = codeValues().map((c) => c.trim()).filter((c) => c !== "");
@@ -241,6 +245,9 @@ function viewNew(el: HTMLElement): void {
   (document.getElementById("f-draft") as HTMLButtonElement).onclick = async () => {
     const fmsg = document.getElementById("f-dmsg") as HTMLElement;
     try {
+      fmsg.innerHTML = "";
+      (document.getElementById("f-out") as HTMLElement).innerHTML = "";
+      (document.getElementById("f-nmsg") as HTMLElement).innerHTML = "";
       const desc = (document.getElementById("f-desc") as HTMLTextAreaElement).value;
       const r = await fetch("/.netlify/functions/agent-draft", {
         method: "POST",
@@ -274,6 +281,9 @@ function viewNew(el: HTMLElement): void {
     if (b.disabled) return;
     b.disabled = true;
     try {
+      nmsg.innerHTML = "";
+      (document.getElementById("f-out") as HTMLElement).innerHTML = "";
+      (document.getElementById("f-dmsg") as HTMLElement).innerHTML = "";
       const f = (document.getElementById("f-note") as HTMLInputElement).files?.[0];
       if (!f) throw new Error("no_note_photo");
       const small = await shrinkPhoto(f);
@@ -526,7 +536,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
-    <button id="r-print">Print report</button><div id="r-out"></div>`;
+    <button id="r-print">Print report</button><div id="r-out"></div>
+    ${m.state === "decided" ? `<div class="card" id="r-follow"><p><strong>Create follow-up</strong> <span class="muted">Mismatched or inconclusive items only — matched items are excluded.</span></p><div id="r-fitems"></div><label>Site<input id="r-fsite" type="text" /></label><label>Deadline<input id="r-fdl" type="datetime-local" /></label><p>Deadline time zone (required, choose one): <span id="r-ftzrow"></span></p><label>Access code<input id="r-fcode" type="password" autocomplete="off" /></label><button id="r-fgo">Create follow-up</button><div id="r-fout"></div><div id="r-fdone"></div></div>` : ""}`;
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     const slot = el.querySelector(`[data-photo="${e.itemId}"]`) as HTMLElement;
@@ -599,6 +610,77 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       (document.getElementById("r-out") as HTMLElement).innerHTML = errBox(e);
     }
   };
+  // Stage 2b-2: follow-up panel (decided only). The parent reviewer token
+  // travels in the request body, never the URL; the code goes in a header.
+  // The idempotency key is random per panel opening, memory only.
+  if (document.getElementById("r-fgo") !== null) {
+    const fkey = `${Date.now().toString(36)}-${Math.floor(Math.random() * 2 ** 52)}`;
+    const eligible = m.expected.filter((e) =>
+      ["confirmed_mismatch", "inconclusive"].includes(m.reviewerDecision[e.itemId]));
+    (document.getElementById("r-fitems") as HTMLElement).innerHTML = eligible.map((e) =>
+      `<label><input type="checkbox" class="r-fitem" value="${esc(e.itemId)}" checked style="width:auto" /> ${esc(e.itemId)} — expected ${esc(e.expectedLabel)} (${esc(plainItem(m.reviewerDecision[e.itemId]))})</label>`).join("");
+    (document.getElementById("r-fsite") as HTMLInputElement).value = m.siteLabel;
+    (document.getElementById("r-fdl") as HTMLInputElement).value = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
+    const fdev = (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+      } catch {
+        return "UTC";
+      }
+    })();
+    (document.getElementById("r-ftzrow") as HTMLElement).innerHTML =
+      `<label><input type="radio" name="r-ftz" value="device" /> Device (${esc(fdev)})</label> ` +
+      `<label><input type="radio" name="r-ftz" value="utc" /> UTC</label>`;
+    try {
+      (document.getElementById("r-fcode") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+    } catch {
+      // Private mode: start blank.
+    }
+    (document.getElementById("r-fgo") as HTMLButtonElement).onclick = async () => {
+      const go = document.getElementById("r-fgo") as HTMLButtonElement;
+      const fout = document.getElementById("r-fout") as HTMLElement;
+      if (go.disabled) return;
+      go.disabled = true;
+      try {
+        fout.innerHTML = "";
+        const ids = Array.from(document.querySelectorAll(".r-fitem:checked") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+        if (ids.length === 0) throw new Error("need_selection");
+        const site = (document.getElementById("r-fsite") as HTMLInputElement).value;
+        const dlRaw = (document.getElementById("r-fdl") as HTMLInputElement).value;
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dlRaw)) throw new Error("bad_deadline");
+        const tzc = document.querySelector('input[name="r-ftz"]:checked') as HTMLInputElement | null;
+        if (tzc === null) throw new Error("need_timezone");
+        const tz = tzc.value === "utc" ? "UTC" : fdev;
+        const code = (document.getElementById("r-fcode") as HTMLInputElement).value;
+        try {
+          sessionStorage.setItem("fp-code", code);
+        } catch {
+          // Private mode: no persistence.
+        }
+        const c = await calls.followup(missionId, token, ids, site, dlRaw.slice(0, 16), tz, fkey,
+          undefined, code === "" ? {} : { "x-requester-code": code }) as {
+          missionId: string; workerToken: string; reviewToken: string; parentItemIds: string[];
+        };
+        const wl = workLink(window.location.origin, c.missionId, c.workerToken);
+        const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
+        (document.getElementById("r-fdone") as HTMLElement).innerHTML =
+          `<div class="card links"><p class="ok">Follow-up ${esc(shortId(c.missionId))} open.</p>` +
+          `<p>Follow-up of ${esc(shortId(missionId))} — parent items: ${c.parentItemIds.map(esc).join(", ")}</p>` +
+          `<p>Worker link:</p><a href="${esc(wl)}">${esc(wl)}</a>` +
+          `<p>Reviewer link:</p><a href="${esc(rl)}">${esc(rl)}</a></div>`;
+      } catch (e) {
+        const s = e instanceof Error ? e.message : String(e);
+        fout.innerHTML = s.includes("requester_code_denied") ? wrongCodeMsg()
+          : s.includes("need_selection") ? `<p class="err">Tick at least one item.</p>`
+          : s.includes("need_timezone") || s.includes("timezone_required") ? `<p class="err">Choose a time zone for the deadline.</p>`
+          : s.includes("parent_not_decided") ? `<p class="err">The parent review is no longer decided — refresh.</p>`
+          : s.includes("ineligible_selection") ? `<p class="err">Only mismatched or inconclusive items can start a follow-up — refresh.</p>`
+          : s.includes("followup_conflict") ? `<p class="err">A follow-up with different details already exists for this panel — reload the page for a fresh one.</p>`
+          : errBox(e);
+        go.disabled = false;
+      }
+    };
+  }
   // Stage 1a remedy: the printable report lives in an isolated popup
   // document (about:blank URL), so this page's reviewer bearer token never
   // reaches the printout or browser headers/footers. Review state here is

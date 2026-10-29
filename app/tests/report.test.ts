@@ -228,6 +228,33 @@ describe("Stage 2a two-axis review summary", () => {
     assert.ok(doc.includes("1 mismatched reading"));
   });
 
+  it("counts a requested close-up with unclear, never as no-reading", () => {
+    const s = summarizeReview({
+      expected: [{ itemId: "box1" }, { itemId: "box2" }],
+      observed: {
+        box1: { state: "closeup_requested" },
+        box2: { state: "expected" },
+      },
+      reviewerDecision: {},
+    });
+    assert.deepEqual([s.unclear, s.noReading, s.matched, s.mismatched], [1, 1, 0, 0]);
+    assert.ok(summaryLines(s).join("\n").includes("1 unclear or inconclusive item"));
+  });
+
+  it("prints follow-up lineage on the child and nothing on the parent", () => {
+    const child = {
+      ...mixed(),
+      missionId: "m-child-1",
+      followUpOf: "m-parent-9",
+      parentItemIds: ["box2", "box3"],
+    };
+    const doc = reportDocument(buildReport(child), [null, null, null, null]);
+    assert.ok(doc.includes("Follow-up of mission m-parent-9"));
+    assert.ok(doc.includes("parent items: box2, box3"));
+    const parentDoc = reportDocument(buildReport(mixed()), [null, null, null, null]);
+    assert.ok(!parentDoc.includes("Follow-up of mission"));
+  });
+
   it("the export pack carries the same summary without changing evidence", () => {
     const store = new MemoryStore();
     const stored = {

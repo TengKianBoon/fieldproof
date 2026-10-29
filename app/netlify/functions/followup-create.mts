@@ -77,7 +77,10 @@ export default async function handler(req: Request): Promise<Response> {
   // instead of orphaning extra missions.
   const childId = `f${sha256Hex(Buffer.from(`${parentId}|${tokenHash}|${keyHash}|${print}`, "utf8")).slice(0, 24)}`;
   try {
-    const out = await blobsScope(parentId, { extraKeys: [idemKey] }, () => {
+    // Stage 2b-2 orphan recovery: preload the deterministic child record
+    // too, so a crash between the mission write and the idem write still
+    // adopts the existing child instead of conflicting.
+    const out = await blobsScope(parentId, { extraKeys: [idemKey, `mission:${childId}`] }, () => {
       const c = ctx();
       const parent = c.missions.load(parentId);
       if (parent === null) return { tag: "error" as const, status: 404, error: "unknown_mission" };

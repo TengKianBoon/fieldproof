@@ -40,7 +40,9 @@ export function summarizeReview(m: SummaryInput): ReviewSummary {
     const st = seen[e.itemId]?.state;
     if (st === "matched") matched++;
     else if (st === "mismatched") mismatched++;
-    else if (st === "unclear" || st === "inconclusive") unclear++;
+    // Stage 2b-2: a requested close-up is still an unresolved reading,
+    // counted with unclear/inconclusive — never as no-reading or matched.
+    else if (st === "unclear" || st === "inconclusive" || st === "closeup_requested") unclear++;
     else noReading++;
     const d = decisions[e.itemId];
     if (d === "confirmed_match") confirmedMatch++;

@@ -152,6 +152,14 @@ export const calls = {
     }, fetchFn, headers),
   consent: (missionId: string, token: string, workerId: string, fetchFn?: FetchFn) =>
     post("consent-accept", { missionId, token, workerId, consentVersion: "v1" }, fetchFn),
+  followup: (
+    parentId: string, token: string, itemIds: string[], siteLabel: string,
+    deadline: string, timezone: string, idempotencyKey: string,
+    fetchFn?: FetchFn, headers?: Record<string, string>,
+  ) =>
+    post("followup-create", {
+      parentId, token, itemIds, siteLabel, deadline, timezone, idempotencyKey,
+    }, fetchFn, headers),
   capture: (missionId: string, token: string, itemId: string, uploadId: string, fetchFn?: FetchFn) =>
     post("capture-submit", { missionId, token, itemId, uploadId }, fetchFn),
   closeup: (missionId: string, token: string, itemId: string, fetchFn?: FetchFn) =>
