@@ -3,7 +3,9 @@
 // identity.ts). The server assigns box1..N and IGNORES any client-supplied
 // item ids (forged ids never enter the mission); legacy expectedItems shape
 // is still accepted for its labels.
-import { blobsScope, ctx, json, secret } from "../lib/_ctx.mts";
+import { blobsScope, ctx, json, secret, store } from "../lib/_ctx.mts";
+import { sha256Hex } from "../../shared/hash.ts";
+import { ok, fail } from "../../shared/types.ts";
 import { mintLink } from "../../shared/links.ts";
 import { requesterIdentity } from "../../shared/identity.ts";
 import { hasZoneSuffix, parseAbsolute, resolveInstant } from "../../shared/timezone.ts";
@@ -127,14 +129,48 @@ export default async function handler(req: Request): Promise<Response> {
     }
     deadline = abs.instant;
   }
-  const created = await blobsScope(null, {}, () => {
+  const plannedSite = site.value as import("../../shared/checkin.ts").PlannedSite | undefined;
+  // F3 optional idempotent create (followup-create pattern): the same
+  // idempotencyKey with the same payload returns the same mission, so an
+  // agent retrying after a timeout never makes a second check; the same key
+  // with a different payload conflicts. Deterministic id plus an idempotency
+  // record, both preloaded in the Blobs scope so concurrent duplicates
+  // converge on one mission.
+  const rawKey = (body as Record<string, unknown>).idempotencyKey;
+  if (rawKey !== undefined && (typeof rawKey !== "string" || rawKey === "" || rawKey.length > 128)) {
+    return json(400, { error: "bad_input" });
+  }
+  let idem: { key: string; missionId: string; print: string } | null = null;
+  if (typeof rawKey === "string") {
+    const keyHash = sha256Hex(Buffer.from(rawKey, "utf8")).slice(0, 16);
+    const print = sha256Hex(Buffer.from(JSON.stringify({
+      siteLabel, expectedItems, deadline, brief: brief ?? null, site: plannedSite ?? null,
+    }), "utf8"));
+    const missionId = `m_${sha256Hex(Buffer.from(`create|${keyHash}|${print}`, "utf8")).slice(0, 32)}`;
+    idem = { key: `create-idem:${keyHash}`, missionId, print };
+  }
+  const created = await blobsScope(null, idem === null ? {} : { extraKeys: [idem.key, `mission:${idem.missionId}`] }, () => {
     const { missions } = ctx();
-    return missions.create(siteLabel, expectedItems, deadline, undefined, undefined, brief, site.value as import("../../shared/checkin.ts").PlannedSite | undefined);
+    if (idem === null) return missions.create(siteLabel, expectedItems, deadline, undefined, undefined, brief, plannedSite);
+    const seen = store().get(idem.key);
+    if (seen !== null) {
+      const rec = JSON.parse(seen) as { missionId: string; fingerprint: string };
+      if (rec.fingerprint !== idem.print) return fail<{ missionId: string }>("idempotency_conflict");
+      return ok({ missionId: rec.missionId });
+    }
+    if (missions.load(idem.missionId) === null) {
+      const c = missions.create(siteLabel, expectedItems, deadline, undefined, idem.missionId, brief, plannedSite);
+      if (!c.ok && c.error !== "exists") return c;
+    }
+    store().set(idem.key, JSON.stringify({ missionId: idem.missionId, fingerprint: idem.print }));
+    return ok({ missionId: idem.missionId });
   }).catch((e: unknown) => {
     if (e instanceof Error && e.message === "store_conflict") return { ok: false as const, error: "store_conflict" };
     throw e;
   });
-  if (!created.ok) return json(created.error === "store_conflict" ? 409 : 400, { error: created.error });
+  if (!created.ok) {
+    return json(created.error === "store_conflict" || created.error === "idempotency_conflict" ? 409 : 400, { error: created.error });
+  }
   const m = created.value as { missionId: string };
   const exp = Date.now() + 24 * 3600 * 1000;
   const link = (role: string) =>

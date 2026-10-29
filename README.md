@@ -33,6 +33,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 | `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
 | `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
 | `sam-3.1` | Locates the tag on the stored photo, when found |
+| `muse-spark-1.3`, function calling (agent demo) | Plans and calls FieldProof's agent tools from a plain request; a person still decides every item |
 
 ## Designed to be trusted
 
@@ -78,6 +79,34 @@ flowchart LR
 
 Each request runs inside one storage scope over Netlify Blobs, with conditional writes and a bounded retry. With `READER=mock`, the full loop runs with no model calls.
 
+## Use it from an AI agent
+
+FieldProof ships a small **MCP server** with no dependencies, so an AI agent can request field checks on a client's behalf. It uses the same HTTP API under the same access code, and it stores nothing on disk.
+
+| Tool | What the agent can do |
+|---|---|
+| `create_field_check` | Request a check, and get a field link for the field professional and a review link for the person who decides. Repeating the same request returns the same check |
+| `get_field_check_status` | Follow a check it created: state, a problems-first summary, and each item's reading and decision |
+| `get_evidence_pack` | Read the decisions and photo fingerprints once a person has finished the review |
+
+There is no tool to capture photos or decide items: the field work and every decision stay with people.
+
+Add it to any MCP client that runs local (stdio) servers, with Node 24:
+
+```json
+{
+  "mcpServers": {
+    "fieldproof": {
+      "command": "node",
+      "args": ["<path to this repo>/app/agent/fieldproof-mcp.mts"],
+      "env": { "FIELDPROOF_URL": "https://<your FieldProof site>", "FIELDPROOF_ACCESS_CODE": "<access code>" }
+    }
+  }
+}
+```
+
+**Meta's Muse Spark as the agent:** with `META_API_KEY` also set, `node app/agent/spark-agent.mts` starts a short chat in which Muse Spark calls the same three tools. Ask for a check in plain words, then ask for its status or evidence later in the same session. The script shows you the links directly, so Muse Spark never holds a link's access token. It makes at most 12 model calls per session.
+
 ## Built during the Hackathon
 
 FieldProof was built during Meta's Global AI Developer Hackathon. Hacking officially began on **26 Oct 2026 at 16:24 UTC**; the first commit in this repository is **27 Oct 2026, 03:12 UTC**, and the full history is preserved. Netlify's deploy records corroborate the timeline.
@@ -86,7 +115,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 
 ## What's next
 
-- **Next:** AI agents requesting field checks on a client's behalf.
+- **Next:** AI agents requesting field checks across the 180Climate Fieldwork network.
 - **Future:** hands-free capture on display glasses.
 - Pilot jobs in the 180Climate Fieldwork network.
 
@@ -97,4 +126,5 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - Model readings can be wrong. That is why a person decides every item.
 - Link revocation is per server instance and does not survive a restart.
 - The evidence pack is unsigned JSON.
+- Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
 - FieldProof does not certify regulatory compliance.

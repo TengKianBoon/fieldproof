@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "shared", "netlify", "scripts", "tests"]
+  "include": ["src", "shared", "netlify", "scripts", "tests", "agent"]
 }

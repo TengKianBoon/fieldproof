@@ -15,8 +15,8 @@ export function landingHTML(): string {
     + `<li><strong>Human decision and evidence report.</strong> A person confirms each item and keeps the report.</li>`
     + `</ol></div>`
     + `<div class="card" id="l-strip"><p><strong>Now (working today):</strong></p>`
-    + `<ul><li>Guided capture</li><li>AI label reading</li><li>AI review suggestions</li><li>Human decision</li><li>Evidence report</li><li>Targeted follow-up</li><li>Optional location check-in</li></ul>`
-    + `<p><strong>Next.</strong> AI agents requesting field checks.</p>`
+    + `<ul><li>Guided capture</li><li>AI label reading</li><li>AI review suggestions</li><li>Human decision</li><li>Evidence report</li><li>Targeted follow-up</li><li>Optional location check-in</li><li>Agent access (MCP)</li></ul>`
+    + `<p><strong>Next.</strong> AI agents requesting field checks across the 180Climate Fieldwork network.</p>`
     + `<p><strong>Future.</strong> Hands-free capture on display glasses.</p></div>`
     + `<p class="muted">Built for Meta's Global AI Developer Hackathon. Demo data only.</p>`;
 }
