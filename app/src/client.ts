@@ -49,6 +49,10 @@ export type Route =
   | { name: "work"; missionId: string; token: string }
   | { name: "review"; missionId: string; token: string }
   | { name: "glasses"; missionId: string; token: string }
+  | { name: "jobsNew" }
+  | { name: "jobOwner"; jobId: string; token: string }
+  | { name: "jobBid"; jobId: string; token: string }
+  | { name: "jobClaim"; jobId: string }
   | { name: "unknown" };
 
 export function parseHashRoute(hash: string): Route {
@@ -59,6 +63,15 @@ export function parseHashRoute(hash: string): Route {
   // always sets a hash before rendering, so this input never reaches a view.
   if (parts.length === 0) return hash === "" ? { name: "unknown" } : { name: "landing" };
   if (parts.length === 1 && parts[0] === "new") return { name: "new" };
+  // J2 jobs and bids screens. The claim link carries no token: a person
+  // opens it with the access code to receive the owner link.
+  if (parts.length === 2 && parts[0] === "jobs" && parts[1] === "new") return { name: "jobsNew" };
+  if (parts.length === 3 && parts[0] === "jobs" && parts[1] === "claim" && parts[2] !== "") {
+    return { name: "jobClaim", jobId: parts[2] };
+  }
+  if (parts.length === 3 && (parts[0] === "job" || parts[0] === "bid") && parts[1] !== "" && parts[2] !== "") {
+    return { name: parts[0] === "job" ? "jobOwner" : "jobBid", jobId: parts[1], token: parts[2] } as Route;
+  }
   if (parts.length === 3 && (parts[0] === "work" || parts[0] === "review" || parts[0] === "glasses") && parts[1] !== "" && parts[2] !== "") {
     return { name: parts[0], missionId: parts[1], token: parts[2] } as Route;
   }
@@ -73,6 +86,21 @@ export function workLink(origin: string, missionId: string, token: string): stri
 // worker link. Same worker token, same worker API — display concept only.
 export function glassesLink(origin: string, missionId: string, token: string): string {
   return `${origin}#/glasses/${missionId}/${token}`;
+}
+
+// J2 jobs and bids links. Owner and bidder links are bearer links carrying
+// their signed token in the hash fragment (never a query string). The claim
+// link carries no token at all.
+export function jobBidLink(origin: string, jobId: string, token: string): string {
+  return `${origin}#/bid/${jobId}/${token}`;
+}
+
+export function jobClaimLink(origin: string, jobId: string): string {
+  return `${origin}#/jobs/claim/${jobId}`;
+}
+
+export function jobOwnerLink(origin: string, jobId: string, token: string): string {
+  return `${origin}#/job/${jobId}/${token}`;
 }
 
 export function reviewLink(origin: string, missionId: string, token: string): string {
@@ -264,4 +292,14 @@ export const calls = {
     (await (await get("mission-state", { missionId }, token, fetchFn)).json()) as Record<string, unknown>,
   exportPack: async (missionId: string, token: string, fetchFn: FetchFn = fetch): Promise<Record<string, unknown>> =>
     (await (await get("export-pack", { missionId }, token, fetchFn)).json()) as Record<string, unknown>,
+  // J2 jobs and bids. Tokens travel in POST bodies (and the link hash),
+  // never in query strings. Errors surface as {error: code} messages.
+  jobCreate: (body: Record<string, unknown>, headers: Record<string, string> = {}, fetchFn?: FetchFn) =>
+    post("job-create", body, fetchFn, headers),
+  jobOwner: (jobId: string, token: string, action: string, extra: Record<string, unknown> = {}, fetchFn?: FetchFn) =>
+    post("job-owner", { jobId, token, action, ...extra }, fetchFn),
+  jobBid: (jobId: string, token: string, action: string, extra: Record<string, unknown> = {}, fetchFn?: FetchFn) =>
+    post("job-bid", { jobId, token, action, ...extra }, fetchFn),
+  jobClaim: (jobId: string, headers: Record<string, string> = {}, fetchFn?: FetchFn) =>
+    post("job-claim", { jobId }, fetchFn, headers),
 };

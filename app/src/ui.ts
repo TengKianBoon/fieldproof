@@ -4,8 +4,11 @@
 // evidence loads via evidence-get + blob URLs, revoked on every re-render.
 import "./buffer-shim.ts";
 import "./ui.css";
-import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
+import { parseHashRoute, workLink, reviewLink, jobOwnerLink, jobBidLink, jobClaimLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
 import { buildGlassesHUD, GLASSES_LABEL } from "./glasses.ts";
+import { jobErrorWords, jobInstant, renderBid, renderClaim, renderJobForm, renderOwner } from "./jobsView.ts";
+import type { BidderCheck, BidderJobView, OwnerCheck } from "./jobsView.ts";
+import type { FieldJob } from "../shared/fieldJobs.ts";
 import { landingHTML } from "./landing.ts";
 import { suggestReview } from "../shared/suggest.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
@@ -71,6 +74,10 @@ async function render(): Promise<void> {
     else if (r.name === "new") viewNew(el);
     else if (r.name === "work") await viewWork(el, r.missionId, r.token);
     else if (r.name === "glasses") await viewGlasses(el, r.missionId, r.token);
+    else if (r.name === "jobsNew") viewJobsNew(el);
+    else if (r.name === "jobOwner") await viewJobOwner(el, r.jobId, r.token);
+    else if (r.name === "jobBid") await viewJobBid(el, r.jobId, r.token);
+    else if (r.name === "jobClaim") viewJobClaim(el, r.jobId);
     else if (r.name === "review") await viewReview(el, r.missionId, r.token);
     else el.innerHTML = `<h1>FieldProof</h1><p class="err">Unknown link. Ask the client for a fresh field professional or client link.</p>`;
   } catch (e) {
@@ -78,9 +85,27 @@ async function render(): Promise<void> {
   }
 }
 
-function viewLanding(el: HTMLElement): void {
+async function viewLanding(el: HTMLElement): Promise<void> {
   // F2: static presentation only - no fetch, no tokens, no behavior.
   el.innerHTML = landingHTML();
+  // J2: one additive exception to the static landing — a "Post a job
+  // (pilot)" link appears only when health reports jobsEnabled: true.
+  try {
+    const hr = await fetch("/.netlify/functions/health");
+    const hh = (await hr.json()) as { jobsEnabled?: unknown };
+    if (hr.ok && hh.jobsEnabled === true && document.getElementById("l-jobs") === null) {
+      const hero = el.querySelector(".hero");
+      if (hero !== null) {
+        const a = document.createElement("a");
+        a.id = "l-jobs";
+        a.href = "#/jobs/new";
+        a.textContent = "Post a job (pilot)";
+        hero.appendChild(a);
+      }
+    }
+  } catch {
+    // Health unreachable: no jobs link. The landing stays as-is.
+  }
   (document.getElementById("l-start") as HTMLButtonElement).onclick = () => {
     window.location.hash = "#/new";
   };
@@ -892,6 +917,230 @@ async function viewGlasses(el: HTMLElement, missionId: string, token: string): P
     } catch (e) {
       (document.getElementById("g-out") as HTMLElement).innerHTML = errBox(e);
     } finally {
+      b.disabled = false;
+    }
+  };
+}
+
+function viewJobsNew(el: HTMLElement): void {
+  el.innerHTML = renderJobForm();
+  const codeRows = (values: string[], hints: string[] = []): void => {
+    const box = document.getElementById("j-codes") as HTMLElement;
+    const vals = values.slice(0, 10);
+    box.innerHTML = vals.map((v, i) =>
+      `<label>Item code, box ${i + 1}<input class="j-code-in" type="text" value="${esc(v)}" /></label>` +
+      `<label>Photo tip, box ${i + 1} (optional, at most 120 characters)<input class="j-hint-in" type="text" maxlength="120" value="${esc(hints[i] ?? "")}" /></label>`).join("")
+      + (vals.length > 1 ? `<button id="j-rm">Remove last box</button>` : "");
+    const rm = document.getElementById("j-rm") as HTMLButtonElement | null;
+    if (rm !== null) rm.onclick = () => codeRows(codeValues().slice(0, -1), hintValues().slice(0, -1));
+  };
+  const codeValues = (): string[] =>
+    Array.from(document.querySelectorAll(".j-code-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+  const hintValues = (): string[] =>
+    Array.from(document.querySelectorAll(".j-hint-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+  codeRows(["B12", "B17", "B23"]);
+  const zoneOf = (name: string): string | null => {
+    const c = document.querySelector(`input[name="${name}"]:checked`) as HTMLInputElement | null;
+    if (c === null) return null;
+    return c.value === "utc" ? "UTC" : "device";
+  };
+  try {
+    (document.getElementById("j-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+  } catch {
+    // Private mode: start blank.
+  }
+  (document.getElementById("j-add") as HTMLButtonElement).onclick = () => {
+    const v = codeValues();
+    if (v.length >= 10) return;
+    codeRows([...v, ""], [...hintValues(), ""]);
+  };
+  (document.getElementById("j-go") as HTMLButtonElement).onclick = async () => {
+    const out = document.getElementById("j-out") as HTMLElement;
+    const go = document.getElementById("j-go") as HTMLButtonElement;
+    if (go.disabled) return;
+    go.disabled = true;
+    try {
+      out.innerHTML = "";
+      const code = (document.getElementById("j-code") as HTMLInputElement).value;
+      try {
+        sessionStorage.setItem("fp-code", code);
+      } catch {
+        // Private mode: no persistence.
+      }
+      const headers: Record<string, string> = code === "" ? {} : { "x-requester-code": code };
+      const rows = codeValues().map((c, i) => ({ code: c.trim(), hint: (hintValues()[i] ?? "").trim() }))
+        .filter((r) => r.code !== "");
+      if (rows.length < 1) throw new Error("need_one_code");
+      const bidDl = jobInstant((document.getElementById("j-bid-dl") as HTMLInputElement).value, zoneOf("j-bidtz"));
+      const checkDl = jobInstant((document.getElementById("j-check-dl") as HTMLInputElement).value, zoneOf("j-checktz"));
+      if (bidDl === null || checkDl === null) throw new Error("need_timezone");
+      const cur = (document.getElementById("j-currency") as HTMLSelectElement).value;
+      const skills = (document.getElementById("j-skills") as HTMLInputElement).value
+        .split(",").map((s) => s.trim()).filter((s) => s !== "");
+      const body = {
+        title: (document.getElementById("j-title") as HTMLInputElement).value,
+        outcome: (document.getElementById("j-outcome") as HTMLTextAreaElement).value,
+        deliverables: (document.getElementById("j-deliverables") as HTMLTextAreaElement).value,
+        region: (document.getElementById("j-region") as HTMLInputElement).value,
+        windowStart: (document.getElementById("j-win-start") as HTMLInputElement).value,
+        windowEnd: (document.getElementById("j-win-end") as HTMLInputElement).value,
+        budget: {
+          min: Number((document.getElementById("j-budget-min") as HTMLInputElement).value),
+          max: Number((document.getElementById("j-budget-max") as HTMLInputElement).value),
+          currency: cur,
+        },
+        skills,
+        safetyNotes: (document.getElementById("j-safety") as HTMLTextAreaElement).value,
+        bidDeadline: bidDl,
+        siteLabel: (document.getElementById("j-site") as HTMLInputElement).value,
+        items: rows.map((r) => r.hint === "" ? { expectedLabel: r.code } : { expectedLabel: r.code, photoHint: r.hint }),
+        checkDeadline: checkDl,
+        createdBy: "person",
+      };
+      const c = await calls.jobCreate(body, headers) as { jobId: string; ownerToken: string };
+      const ol = jobOwnerLink(window.location.origin, c.jobId, c.ownerToken);
+      out.innerHTML = `<div class="card links"><p class="ok">Job ${esc(c.jobId)} drafted.</p>`
+        + `<p>Owner link (bearer link — keep it private):</p><a href="${esc(ol)}">${esc(ol)}</a><button id="j-cw">Copy owner link</button>`
+        + `<p class="muted">An agent draft is claimed the same way: share ${esc(jobClaimLink(window.location.origin, c.jobId))} with the client, who opens it with the access code.</p></div>`;
+      (document.getElementById("j-cw") as HTMLButtonElement).onclick = () => void copyText(ol).then(() => {
+        (document.getElementById("j-cw") as HTMLButtonElement).textContent = "Copied";
+      });
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      const special = jobErrorWords(m);
+      out.innerHTML = special !== null ? `<p class="err">${esc(special)}</p>`
+        : m.includes("requester_code_denied") ? `<p class="err">Wrong access code (${(document.getElementById("j-code") as HTMLInputElement).value.length} characters entered)</p>`
+        : m.includes("need_one_code") ? `<p class="err">Enter at least one item code.</p>`
+        : m.includes("need_timezone") ? `<p class="err">Choose a time zone for each deadline.</p>`
+        : m.includes("job_leaks_code") ? `<p class="err">This text contains one of the item codes. Remove it so the people you invite never see the item codes.</p>`
+        : errBox(e);
+      go.disabled = false;
+    }
+  };
+}
+
+let ownerInviteJob = "";
+let ownerInviteToken: string | null = null;
+
+async function viewJobOwner(el: HTMLElement, jobId: string, token: string): Promise<void> {
+  const r = await calls.jobOwner(jobId, token, "get") as { job: FieldJob; check?: OwnerCheck; invite?: { bidderToken: string } };
+  const job = r.job;
+  if (ownerInviteJob !== jobId) {
+    ownerInviteJob = jobId;
+    ownerInviteToken = null;
+  }
+  el.innerHTML = renderOwner(job, { origin: window.location.origin, inviteBidderToken: ownerInviteToken, check: r.check ?? null });
+  const out = document.getElementById("jo-out") as HTMLElement;
+  const act = async (action: string, extra: Record<string, unknown>, btn: HTMLButtonElement | null): Promise<void> => {
+    if (btn !== null) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+    }
+    try {
+      const n = await calls.jobOwner(jobId, token, action, extra) as { invite?: { bidderToken: string } };
+      if (n.invite !== undefined) ownerInviteToken = n.invite.bidderToken;
+      await render();
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      const special = jobErrorWords(m);
+      out.innerHTML = special !== null ? `<p class="err">${esc(special)}</p>` : errBox(e);
+    } finally {
+      if (btn !== null) btn.disabled = false;
+    }
+  };
+  const pub = document.getElementById("jo-publish") as HTMLButtonElement | null;
+  if (pub !== null) pub.onclick = () => void act("publish", {}, pub);
+  const can = document.getElementById("jo-cancel") as HTMLButtonElement | null;
+  if (can !== null) can.onclick = () => void act("cancel", {}, can);
+  const can2 = document.getElementById("jo-cancel2") as HTMLButtonElement | null;
+  if (can2 !== null) can2.onclick = () => void act("cancel", {}, can2);
+  const uns = document.getElementById("jo-unselect") as HTMLButtonElement | null;
+  if (uns !== null) uns.onclick = () => void act("unselect", {}, uns);
+  const go = document.getElementById("jo-go") as HTMLButtonElement | null;
+  if (go !== null) {
+    go.onclick = () => void act("invite", { name: (document.getElementById("jo-name") as HTMLInputElement).value }, go);
+  }
+  const cp = document.getElementById("jo-copy") as HTMLButtonElement | null;
+  if (cp !== null && ownerInviteToken !== null) {
+    const link = jobBidLink(window.location.origin, jobId, ownerInviteToken);
+    cp.onclick = () => void copyText(link).then(() => {
+      cp.textContent = "Copied";
+    });
+  }
+  for (const b of Array.from(el.querySelectorAll("[data-jo-select]")) as HTMLButtonElement[]) {
+    b.onclick = () => void act("select", { bidId: b.getAttribute("data-jo-select") ?? "" }, b);
+  }
+}
+
+async function viewJobBid(el: HTMLElement, jobId: string, token: string): Promise<void> {
+  const r = await calls.jobBid(jobId, token, "get") as { job: BidderJobView; check?: BidderCheck };
+  el.innerHTML = renderBid(r.job, r.check ?? null, window.location.origin);
+  const out = document.getElementById("jb-out") as HTMLElement | null;
+  if (out === null) return;
+  const act = async (action: string, extra: Record<string, unknown>, btn: HTMLButtonElement): Promise<void> => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      await calls.jobBid(jobId, token, action, extra);
+      await render();
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      const special = jobErrorWords(m);
+      out.innerHTML = special !== null ? `<p class="err">${esc(special)}</p>` : errBox(e);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  const send = document.getElementById("jb-send") as HTMLButtonElement | null;
+  if (send !== null) {
+    send.onclick = () => void act("submit", {
+      price: {
+        amount: Number((document.getElementById("jb-price") as HTMLInputElement).value),
+        currency: (document.getElementById("jb-currency") as HTMLSelectElement).value,
+      },
+      method: (document.getElementById("jb-method") as HTMLTextAreaElement).value,
+      availableFrom: (document.getElementById("jb-from") as HTMLInputElement).value,
+      availableTo: (document.getElementById("jb-to") as HTMLInputElement).value,
+      exclusions: (document.getElementById("jb-excl") as HTMLTextAreaElement).value,
+      capability: (document.getElementById("jb-cap") as HTMLTextAreaElement).value,
+    }, send);
+  }
+  const wd = document.getElementById("jb-withdraw") as HTMLButtonElement | null;
+  if (wd !== null) wd.onclick = () => void act("withdraw", {}, wd);
+  const acc = document.getElementById("jb-accept") as HTMLButtonElement | null;
+  if (acc !== null) acc.onclick = () => void act("accept", {}, acc);
+  const dec = document.getElementById("jb-decline") as HTMLButtonElement | null;
+  if (dec !== null) dec.onclick = () => void act("decline", {}, dec);
+}
+
+function viewJobClaim(el: HTMLElement, jobId: string): void {
+  el.innerHTML = renderClaim();
+  try {
+    (document.getElementById("jc-code") as HTMLInputElement).value = sessionStorage.getItem("fp-code") ?? "";
+  } catch {
+    // Private mode: start blank.
+  }
+  (document.getElementById("jc-open") as HTMLButtonElement).onclick = async () => {
+    const out = document.getElementById("jc-out") as HTMLElement;
+    const b = document.getElementById("jc-open") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
+    try {
+      const code = (document.getElementById("jc-code") as HTMLInputElement).value;
+      try {
+        sessionStorage.setItem("fp-code", code);
+      } catch {
+        // Private mode: no persistence.
+      }
+      const r = await calls.jobClaim(jobId, code === "" ? {} : { "x-requester-code": code }) as { ownerToken: string };
+      window.location.hash = `#/job/${jobId}/${r.ownerToken}`;
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      const special = jobErrorWords(m);
+      out.innerHTML = special !== null ? `<p class="err">${esc(special)}</p>`
+        : m.includes("requester_code_denied") ? `<p class="err">That access code wasn't accepted</p>`
+        : m.includes("not_found") ? `<p class="err">This job doesn't exist</p>`
+        : errBox(e);
       b.disabled = false;
     }
   };
