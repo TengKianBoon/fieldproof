@@ -13,7 +13,7 @@ import { buildSparkRequest, SPARK_ENDPOINT, SPARK_TIMEOUT_MS } from "../../share
 import { costOf, parseResponse, planningCapPerCall, toLabel, validReading, type Usage } from "../../shared/spikecost.ts";
 import {
   attachBox, attachSamStatus, buildSamRequest, detectImageMime, parseSamBoxes,
-  parseSamResponse, samConcept, samEmptyStatus, SAM_ENDPOINT, SAM_PRICE_MILLICENTS,
+  parseSamResponse, samConcept, samDisabled, samEmptyStatus, SAM_ENDPOINT, SAM_PRICE_MILLICENTS,
   SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
 import { metaDiag } from "../../shared/agentDraft.ts";
@@ -206,6 +206,8 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
 // 250) plus idempotent attach. Best effort: every path records a samStatus
 // ("box", "none", or a sanitised "sam:…" diag) without changing the capture.
 async function samBoxForCapture(missionId: string, itemId: string, uploadId: string, bytes: Uint8Array): Promise<void> {
+  // S1c: with SAM switched off nothing is recorded, so the reviewer sees the photo alone.
+  if (samDisabled()) return;
   const key = process.env.META_API_KEY;
   if (typeof key !== "string" || key === "") {
     await recordSamOutcome(missionId, itemId, uploadId, "sam:skipped:no_key");

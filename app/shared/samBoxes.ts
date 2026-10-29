@@ -31,6 +31,12 @@ export function samConcept(env: Record<string, string | undefined> = process.env
   return /^[A-Za-z ]{1,40}$/.test(raw) ? raw : SAM_PROMPT;
 }
 
+// S1c: SAM_MODE=off switches SAM off entirely (no call, no spend, no
+// per-item SAM line). Unset or any other value leaves SAM on as before.
+export function samDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return (env.SAM_MODE ?? "").trim().toLowerCase() === "off";
+}
+
 // READER=mock stand-in: a fixed, clearly-labelled box (never a real locate).
 export const MOCK_BOX = { x1: 0.3, y1: 0.35, x2: 0.7, y2: 0.65, confidence: 1 };
 

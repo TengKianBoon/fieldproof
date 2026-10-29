@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { MockBlobsKVBackend, MockBlobsBytesBackend } from "../shared/blobsBackend.ts";
 import { __setBlobsTestBackends, blobsScope, ctx } from "../netlify/lib/_ctx.mts";
-import { detectImageMime, buildSamRequest } from "../shared/samBoxes.ts";
+import { detectImageMime, buildSamRequest, samDisabled } from "../shared/samBoxes.ts";
 import { buildSparkRequest } from "../shared/sparkReader.ts";
 import { sha256Hex } from "../shared/hash.ts";
 
@@ -14,7 +14,7 @@ process.env.FIELDPROOF_DATA_DIR = ":memory:";
 
 const savedEnv: Record<string, string | undefined> = {};
 function saveEnv(): void {
-  for (const k of ["BLOBS_STORE", "FIELDPROOF_ENV", "READER", "META_API_KEY", "LEDGER_CEILING_USD", "SAM_CONCEPT"]) {
+  for (const k of ["BLOBS_STORE", "FIELDPROOF_ENV", "READER", "META_API_KEY", "LEDGER_CEILING_USD", "SAM_CONCEPT", "SAM_MODE"]) {
     savedEnv[k] = process.env[k];
   }
 }
@@ -111,6 +111,7 @@ describe("S8 MIME + SAM outcome persistence", () => {
     delete process.env.FIELDPROOF_ENV;
     delete process.env.LEDGER_CEILING_USD;
     delete process.env.SAM_CONCEPT;
+    delete process.env.SAM_MODE;
     process.env.BLOBS_STORE = "blobs";
     process.env.READER = "spark";
     process.env.META_API_KEY = "test-key-never-sent";
@@ -151,5 +152,32 @@ describe("S8 MIME + SAM outcome persistence", () => {
     assert.equal(r.cap.state, "received");
     assert.equal(r.item.labelBox ?? null, null);
     assert.equal(r.item.samStatus?.status, "none");
+  });
+
+  it("S1c: SAM_MODE=off makes no SAM call and records no SAM outcome", async () => {
+    process.env.SAM_MODE = " OFF ";
+    try {
+      const unused = new Response(JSON.stringify({ status: "completed", id: "sam_s1c", output: [] }));
+      const r = await captureWithSam(unused);
+      assert.equal(r.cap.status, 200);
+      assert.equal(r.cap.state, "received");
+      assert.equal(r.item.state, "matched");
+      assert.ok(r.seen.imageUrl.startsWith("data:image/png;base64,"));
+      assert.equal(r.sam.imageUrl, "");
+      assert.equal(r.item.labelBox ?? null, null);
+      assert.equal(r.item.samStatus ?? null, null);
+    } finally {
+      delete process.env.SAM_MODE;
+    }
+  });
+
+  it("S1c: only the word off switches SAM off", () => {
+    assert.equal(samDisabled({ SAM_MODE: "off" }), true);
+    assert.equal(samDisabled({ SAM_MODE: " Off " }), true);
+    assert.equal(samDisabled({}), false);
+    assert.equal(samDisabled({ SAM_MODE: "" }), false);
+    assert.equal(samDisabled({ SAM_MODE: "on" }), false);
+    assert.equal(samDisabled({ SAM_MODE: "0" }), false);
+    assert.equal(samDisabled({ SAM_MODE: "offline" }), false);
   });
 });
