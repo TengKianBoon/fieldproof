@@ -34,6 +34,9 @@ export interface CheckinFix {
 export interface CheckinRecord {
   attempts: number;
   fix: CheckinFix | null;
+  // A1a: true when the latest attempt was unverified and an earlier
+  // verified fix was kept instead of overwritten.
+  keptEarlier: boolean;
 }
 
 export interface FixInput {

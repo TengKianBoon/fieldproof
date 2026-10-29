@@ -53,6 +53,7 @@ export async function stateHandler(req: Request): Promise<Response> {
       brief: m.brief ?? null,
       planned: m.siteLocation !== undefined,
       checkin: publicCheckin(m.checkin?.fix ?? null, m.checkin?.attempts ?? 0),
+      keptEarlier: m.checkin?.keptEarlier ?? false,
       items: m.expected.map((e) => ({
         itemId: e.itemId,
         state: workerItemState((m as Mission).observed[e.itemId].state),

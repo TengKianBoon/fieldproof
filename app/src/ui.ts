@@ -6,6 +6,7 @@ import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
 import { landingHTML } from "./landing.ts";
+import { suggestReview } from "../shared/suggest.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 
@@ -518,7 +519,7 @@ let workIndex = 0;
 
 async function viewWork(el: HTMLElement, missionId: string, token: string): Promise<void> {
   const s = await calls.state(missionId, token) as {
-    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[]; planned?: boolean; checkin?: { status: string; distanceM: number | null; accuracyM: number; accuracyBand: string; fixTime: string; stale: boolean; attempts: number } | null };
+    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[]; keptEarlier?: boolean; planned?: boolean; checkin?: { status: string; distanceM: number | null; accuracyM: number; accuracyBand: string; fixTime: string; stale: boolean; attempts: number } | null };
   };
   const m = s.mission;
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
@@ -607,7 +608,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
       + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
     }</div>`;
-  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p>${briefCard}<div class="card" id="w-checkin"><p><strong>Check-in (optional)</strong></p><p class="muted">Share a one-time device fix so the client sees one location, accuracy and time. Photos count without it.</p>${checkinLine}<p class="muted">Check-in ${attemptsUsed} of 5 used.</p><button id="w-cgo">Share location for this mission</button><div id="w-cmsg"></div></div><div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
+  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p>${briefCard}<div class="card" id="w-checkin"><p><strong>Check-in (optional)</strong></p><p class="muted">Share a one-time device fix so the client sees one location, accuracy and time. Photos count without it.</p>${checkinLine}<p class="muted">Check-in ${attemptsUsed} of 5 used.</p>${m.keptEarlier === true ? `<p class="muted">Latest attempt unverified — earlier check-in kept.</p>` : ""}<button id="w-cgo">Share location for this mission</button><div id="w-cmsg"></div></div><div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
     <div class="row"><button id="w-prev"${k === 0 ? " disabled" : ""}>Previous</button><button id="w-next"${k === m.items.length - 1 ? " disabled" : ""}>Next</button></div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
   const savePos = (n: number): void => {
@@ -775,7 +776,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
     const o = m.observed[e.itemId];
     cards.push(`<div class="card" data-item="${esc(e.itemId)}">
       <p><strong>${esc(e.itemId)}</strong> — expected ${esc(e.expectedLabel)}, observed ${esc(o.observedLabel ?? "—")} (${esc(o.readability)}, ${clientChip(o.state)})</p>
-      <div data-photo="${esc(e.itemId)}"><p class="muted">Loading photo…</p></div>
+      <div data-sug="${esc(e.itemId)}">${suggestReview({ state: o.state, expectedLabel: e.expectedLabel, observedLabel: o.observedLabel, readability: o.readability, samStatus: o.samStatus?.status ?? null }).map((s) => `<p class="muted">${esc(s.text)}</p>`).join("")}</div><div data-photo="${esc(e.itemId)}"><p class="muted">Loading photo…</p></div>
       <div class="row"${m.state === "in_review" ? "" : " hidden"}><button data-yes="${esc(e.itemId)}">Confirm match</button><button data-no="${esc(e.itemId)}">Confirm mismatch</button></div>
       <button data-inc="${esc(e.itemId)}"${m.state === "in_review" ? "" : " hidden"}>Inconclusive</button><div data-msg="${esc(e.itemId)}"></div></div>`);
   }

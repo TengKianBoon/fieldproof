@@ -202,7 +202,13 @@ export class Missions {
     if (attempts >= CHECKIN_MAX_ATTEMPTS) return fail("checkin_exhausted");
     const c = classifyFix(input, Date.now(), m.siteLocation);
     if (!c.ok) return fail(c.error as string);
-    m.checkin = { attempts: attempts + 1, fix: c.value as CheckinFix };
+    const fix = c.value as CheckinFix;
+    const stored = m.checkin?.fix ?? null;
+    // A1a keep-best-fix: a later stale/low-accuracy attempt counts but
+    // preserves an earlier verified within/outside/inconclusive fix.
+    const storedVerified = stored !== null && (stored.status === "within" || stored.status === "outside" || stored.status === "inconclusive");
+    const keep = storedVerified && fix.status === "unverified";
+    m.checkin = { attempts: attempts + 1, keptEarlier: keep, fix: keep ? (stored as CheckinFix) : fix };
     return this.commit(m, v);
   }
 

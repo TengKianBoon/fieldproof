@@ -14,7 +14,7 @@ export function landingHTML(): string {
     + `<li><strong>AI label reading.</strong> Meta's Muse Spark reads every label from the photos.</li>`
     + `<li><strong>Human decision and evidence report.</strong> A person confirms each item and keeps the report.</li>`
     + `</ol></div>`
-    + `<div class="card" id="l-strip"><p><strong>Now.</strong> Only what is actually implemented:</p>`
+    + `<div class="card" id="l-strip"><p><strong>Now (working today):</strong> Only what is actually implemented:</p>`
     + `<ul><li>Guided capture</li><li>Label reading</li><li>Human decision</li><li>Evidence report</li><li>Targeted follow-up</li><li>Optional location check-in</li></ul>`
     + `<p><strong>Next.</strong> AI agents requesting field checks.</p>`
     + `<p><strong>Future.</strong> Hands-free capture on display glasses.</p></div>`

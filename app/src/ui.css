@@ -18,7 +18,7 @@ h2 { font-size: 1.25rem; margin: 1rem 0 0.5rem; }
 button, .btn { display: block; width: 100%; margin: 0.5rem 0; padding: 0.9rem; min-height: 44px; font-size: 1.05rem; border-radius: 0.75rem; border: 1px solid var(--forest); background: var(--paper); color: var(--forest); font-weight: 600; box-sizing: border-box; }
 button:disabled { opacity: 0.45; }
 button.primary { background: var(--forest); color: var(--paper); }
-button:focus-visible, .btn:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+button:focus-visible, .btn:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--forest); box-shadow: 0 0 0 8px var(--amber); }
 input[type="text"], input[type="password"], input[type="datetime-local"], input[type="file"], textarea { display: block; width: 100%; margin: 0.4rem 0; padding: 0.7rem; min-height: 44px; font-size: 1rem; box-sizing: border-box; border: 1px solid var(--muted); border-radius: 0.5rem; background: var(--paper); color: var(--ink); }
 input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; accent-color: var(--forest); }
 label { display: block; margin: 0.6rem 0 0.2rem; font-weight: 600; }

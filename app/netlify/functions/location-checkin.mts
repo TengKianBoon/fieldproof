@@ -27,5 +27,6 @@ async function checkin(req: Request): Promise<Response> {
   return json(200, {
     missionId,
     checkin: publicCheckin(saved?.fix ?? null, saved?.attempts ?? 0),
+    keptEarlier: saved?.keptEarlier ?? false,
   });
 }
