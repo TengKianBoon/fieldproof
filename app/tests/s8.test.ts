@@ -136,7 +136,7 @@ describe("S8 MIME + SAM outcome persistence", () => {
     const err = new Response(JSON.stringify({ error: { type: "server_error", code: "overloaded" } }), { status: 500 });
     const r = await captureWithSam(err);
     assert.equal(r.cap.status, 200);
-    assert.equal(r.cap.state, "matched");
+    assert.equal(r.cap.state, "received");
     assert.equal(r.item.state, "matched");
     assert.equal(r.item.labelBox ?? null, null);
     assert.equal(r.item.samStatus?.status, "sam:500:server_error:overloaded");
@@ -148,7 +148,7 @@ describe("S8 MIME + SAM outcome persistence", () => {
     const empty = new Response(JSON.stringify({ status: "completed", id: "sam_s8", output: [] }));
     const r = await captureWithSam(empty);
     assert.equal(r.cap.status, 200);
-    assert.equal(r.cap.state, "matched");
+    assert.equal(r.cap.state, "received");
     assert.equal(r.item.labelBox ?? null, null);
     assert.equal(r.item.samStatus?.status, "none");
   });

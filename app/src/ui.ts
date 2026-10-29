@@ -4,7 +4,7 @@
 // evidence loads via evidence-get + blob URLs, revoked on every re-render.
 import "./buffer-shim.ts";
 import "./ui.css";
-import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls } from "./client.ts";
+import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
 import { buildReport, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 
@@ -103,6 +103,9 @@ function viewNew(el: HTMLElement): void {
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
     <div id="f-codes"></div>
     <button id="f-add">Add another box</button>
+    <label>Job title (optional, at most 80 characters)<input id="f-title" type="text" maxlength="80" placeholder="Morning collection run" /></label><div id="f-title-err"></div>
+    <label>Role (optional, at most 60 characters)<input id="f-role" type="text" maxlength="60" placeholder="Dock pickup" /></label><div id="f-role-err"></div>
+    <label>Instructions for the field professional (optional, at most 600 characters)<textarea id="f-instructions" rows="3" maxlength="600" style="width:100%;box-sizing:border-box" placeholder="Call on arrival; photograph each label straight on"></textarea></label><div id="f-instructions-err"></div>
     <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
     <p>Deadline time zone (required, choose one): <span id="f-tzrow"></span></p>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
@@ -115,17 +118,32 @@ function viewNew(el: HTMLElement): void {
     <label><input id="f-confirm" type="checkbox" style="width:auto" /> I checked every field against the note photo</label>
     <button id="f-go" class="primary">Create mission</button><div id="f-out"></div>`;
   // Dynamic code rows, 1-10. The server assigns box1..N and validates.
-  const codeRows = (values: string[]): void => {
+  // Each row also carries an optional per-item photo tip (at most 120
+  // characters); both columns survive add/remove together.
+  const codeRows = (values: string[], hints: string[] = []): void => {
     const box = document.getElementById("f-codes") as HTMLElement;
     const vals = values.slice(0, 10);
     box.innerHTML = vals.map((v, i) =>
-      `<label>Expected code, box ${i + 1}<input class="f-code-in" type="text" value="${esc(v)}" /></label>`).join("")
+      `<label>Expected code, box ${i + 1}<input class="f-code-in" type="text" value="${esc(v)}" /></label>` +
+      `<label>Photo tip, box ${i + 1} (optional, at most 120 characters)<input class="f-hint-in" type="text" maxlength="120" value="${esc(hints[i] ?? "")}" /></label>` +
+      `<div id="f-hint-err-${i}"></div>`).join("")
       + (vals.length > 1 ? `<button id="f-rm">Remove last box</button>` : "");
     const rm = document.getElementById("f-rm") as HTMLButtonElement | null;
-    if (rm !== null) rm.onclick = () => codeRows(codeValues().slice(0, -1));
+    if (rm !== null) rm.onclick = () => codeRows(codeValues().slice(0, -1), hintValues().slice(0, -1));
   };
   const codeValues = (): string[] =>
     Array.from(document.querySelectorAll(".f-code-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+  const hintValues = (): string[] =>
+    Array.from(document.querySelectorAll(".f-hint-in") as NodeListOf<HTMLInputElement>).map((i) => i.value);
+  // F1c: clears every brief inline error; stale messages never survive a
+  // new attempt or a success.
+  const clearBriefErrors = (): void => {
+    for (const id of ["f-title-err", "f-role-err", "f-instructions-err"]) {
+      const d = document.getElementById(id);
+      if (d !== null) d.innerHTML = "";
+    }
+    document.querySelectorAll('[id^="f-hint-err-"]').forEach((d) => { d.innerHTML = ""; });
+  };
   codeRows(["B12", "B17", "B23"]);
   // Task 0: explicit zone choice, neither preselected. The device zone name
   // comes from the browser; the server re-validates whatever arrives, so a
@@ -164,7 +182,7 @@ function viewNew(el: HTMLElement): void {
   (document.getElementById("f-add") as HTMLButtonElement).onclick = () => {
     const v = codeValues();
     if (v.length >= 10) return;
-    codeRows([...v, ""]);
+    codeRows([...v, ""], [...hintValues(), ""]);
   };
   // Note-draft confirmation gate: armed by a note draft, cleared by render.
   let notePending = false;
@@ -199,17 +217,28 @@ function viewNew(el: HTMLElement): void {
       out.innerHTML = "";
       (document.getElementById("f-nmsg") as HTMLElement).innerHTML = "";
       (document.getElementById("f-dmsg") as HTMLElement).innerHTML = "";
+      clearBriefErrors();
       if (notePending && !confirmBox.checked) throw new Error("note_unconfirmed");
       const site = (document.getElementById("f-site") as HTMLInputElement).value;
-      const codes = codeValues().map((c) => c.trim()).filter((c) => c !== "");
-      if (codes.length < 1) throw new Error("need_one_code");
+      // F1c: codes and per-row tips are zipped before empty codes are
+      // dropped, so each tip stays on its own box.
+      const rows = codeValues().map((c, i) => ({ code: c.trim(), hint: (hintValues()[i] ?? "").trim() }))
+        .filter((r) => r.code !== "");
+      if (rows.length < 1) throw new Error("need_one_code");
+      const codes = rows.map((r) => r.code);
+      const hints = rows.map((r) => (r.hint === "" ? undefined : r.hint));
+      const brief = {
+        title: (document.getElementById("f-title") as HTMLInputElement).value,
+        role: (document.getElementById("f-role") as HTMLInputElement).value,
+        instructions: (document.getElementById("f-instructions") as HTMLTextAreaElement).value,
+      };
       const dlRaw = (document.getElementById("f-dl") as HTMLInputElement).value;
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dlRaw)) throw new Error("bad_deadline");
       // Task 0: the raw wall time plus the explicit zone choice go to the
       // server, which does the real wall-to-instant conversion.
       const tz = selectedTz();
       if (tz === null) throw new Error("need_timezone");
-      const c = await calls.createMission(site, codes, dlRaw.slice(0, 16), undefined, codeHeaders(), tz) as { missionId: string; workerToken: string; reviewToken: string };
+      const c = await calls.createMission(site, codes, dlRaw.slice(0, 16), undefined, codeHeaders(), tz, brief, hints) as { missionId: string; workerToken: string; reviewToken: string };
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
       out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(shortId(c.missionId))} open.</p>
@@ -232,11 +261,28 @@ function viewNew(el: HTMLElement): void {
       (document.getElementById("f-again") as HTMLButtonElement).onclick = () => viewNew(el);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
+      // F1c: a leaking brief field gets the same message inline on that
+      // field (never echoing the expected codes) plus the form-level note.
+      // Every other input keeps its current value — nothing is re-rendered.
+      if (m.includes("brief_leaks_code")) {
+        const target = briefLeakTarget(typeof (e as { field?: unknown }).field === "string"
+          ? String((e as { field?: unknown }).field) : "");
+        const id = target === null ? null
+          : target.kind === "title" ? "f-title-err"
+          : target.kind === "role" ? "f-role-err"
+          : target.kind === "instructions" ? "f-instructions-err"
+          : `f-hint-err-${target.index}`;
+        if (id !== null) {
+          const slot = document.getElementById(id);
+          if (slot !== null) slot.innerHTML = `<p class="err">${esc(BRIEF_LEAK_MESSAGE)}</p>`;
+        }
+      }
       const friendly = m.includes("requester_code_denied") ? wrongCodeMsg()
         : m.includes("note_unconfirmed") ? "Check the draft against the note photo and tick confirmation first."
         : m.includes("need_one_code") ? "Enter at least one expected code."
         : (m.includes("need_timezone") || m.includes("timezone_required")) ? "Choose a time zone for the deadline."
         : m.includes("bad_zone") ? "That time zone is not supported — pick device or UTC."
+        : m.includes("brief_leaks_code") ? BRIEF_LEAK_MESSAGE
         : m;
       out.innerHTML = `<p class="err">${esc(friendly)}</p>`;
       goBtn.disabled = false;
@@ -509,9 +555,10 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
             if (total > 1) msg.innerHTML = `<p class="muted">Uploading chunk ${done} of ${total}…</p>`;
           });
         const cap = await calls.capture(missionId, token, it.itemId, up.uploadId) as { state: string };
-        if (cap.state === "unclear") {
+        // F1c: the server answers with neutral worker states only.
+        if (cap.state === "retake") {
           const head = el.querySelector(`[data-item="${it.itemId}"] > p`) as HTMLElement | null;
-          if (head !== null) head.textContent = `${it.itemId} — ${plainItem("unclear")}`;
+          if (head !== null) head.textContent = `${it.itemId} — ${plainWorkerItem("retake")}`;
           msg.innerHTML = `<p>Label unclear — take a close-up (at most 2), then it goes inconclusive.</p>
             <button data-cu="${esc(it.itemId)}">Request close-up</button>`;
           (msg.querySelector(`[data-cu="${it.itemId}"]`) as HTMLButtonElement).onclick = async () => {

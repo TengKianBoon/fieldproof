@@ -15,9 +15,12 @@ async function post(name: string, body: unknown, fetchFn: FetchFn = fetch, heade
   });
   const j = (await r.json()) as Record<string, unknown>;
   if (!r.ok) {
-    const err = new Error(String(j.error ?? r.status)) as Error & { diag?: unknown; httpStatus?: unknown };
+    const err = new Error(String(j.error ?? r.status)) as Error & { diag?: unknown; httpStatus?: unknown; field?: unknown };
     if (typeof j.diag === "string") err.diag = j.diag;
     if (typeof j.httpStatus === "number") err.httpStatus = j.httpStatus;
+    // F1c: the server names the leaking brief field (never the codes) so
+    // the form can show the error inline on that field.
+    if (typeof j.field === "string") err.field = j.field;
     throw err;
   }
   return j;
@@ -144,14 +147,73 @@ export async function evidenceBlob(missionId: string, uploadId: string, token: s
   return r.blob();
 }
 
+// F1c: optional job-brief input for mission-create. Limits match the
+// server schema (title 80, role 60, instructions 600, photoHint 120);
+// empty values are omitted, never sent as empty strings.
+export interface BriefInput {
+  title?: string;
+  role?: string;
+  instructions?: string;
+}
+
+// Inline leak error shown on the named brief field. The expected codes are
+// never echoed — the field professional must not be told the answer.
+export const BRIEF_LEAK_MESSAGE =
+  "This text contains one of the expected codes. Remove it so the field professional isn't told the answer.";
+
+export type BriefLeakTarget =
+  | { kind: "title" } | { kind: "role" } | { kind: "instructions" }
+  | { kind: "photoHint"; index: number };
+
+// Maps the server's brief_leaks_code field name to the form field it
+// belongs to ("photoHint:boxN" is 1-based on the server's box ids).
+export function briefLeakTarget(field: string): BriefLeakTarget | null {
+  if (field === "title") return { kind: "title" };
+  if (field === "role") return { kind: "role" };
+  if (field === "instructions") return { kind: "instructions" };
+  const m = /^photoHint:box(\d+)$/.exec(field);
+  if (m !== null) {
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && n >= 1 && n <= 10) return { kind: "photoHint", index: n - 1 };
+  }
+  return null;
+}
+
 export const calls = {
-  createMission: (siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn, headers?: Record<string, string>, timezone?: string) =>
-    post("mission-create", {
+  createMission: (
+    siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn,
+    headers?: Record<string, string>, timezone?: string, brief?: BriefInput,
+    photoHints?: Array<string | undefined>,
+  ) => {
+    const clean = (v: string | undefined): string | undefined => {
+      if (v === undefined) return undefined;
+      const t = v.trim();
+      return t === "" ? undefined : t;
+    };
+    const briefOut: Record<string, string> = {};
+    if (brief !== undefined) {
+      const t = clean(brief.title);
+      const r = clean(brief.role);
+      const i = clean(brief.instructions);
+      if (t !== undefined) briefOut.title = t;
+      if (r !== undefined) briefOut.role = r;
+      if (i !== undefined) briefOut.instructions = i;
+    }
+    return post("mission-create", {
       siteLabel,
-      expectedItems: labels.map((expectedLabel, i) => ({ itemId: `box${i + 1}`, expectedLabel })),
+      expectedItems: labels.map((expectedLabel, i) => {
+        const h = photoHints !== undefined ? clean(photoHints[i]) : undefined;
+        return {
+          itemId: `box${i + 1}`,
+          expectedLabel,
+          ...(h === undefined ? {} : { photoHint: h }),
+        };
+      }),
       deadline,
       ...(timezone === undefined ? {} : { timezone }),
-    }, fetchFn, headers),
+      ...(Object.keys(briefOut).length === 0 ? {} : { brief: briefOut }),
+    }, fetchFn, headers);
+  },
   consent: (missionId: string, token: string, workerId: string, fetchFn?: FetchFn) =>
     post("consent-accept", { missionId, token, workerId, consentVersion: "v1" }, fetchFn),
   followup: (

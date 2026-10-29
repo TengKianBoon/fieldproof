@@ -122,12 +122,12 @@ describe("S2d full flow over shared mocked Blobs only", () => {
     assert.equal((await jsonOf(await post(consentH, { missionId, token: worker, workerId: "w", consentVersion: "v1" }))).status, 200);
     // b2 matches (clear B17), b1 mismatches (clear B17 vs B12), b3 goes inconclusive.
     const u2 = await upload("box2", "s2d-b2", "clear-B17.png");
-    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box2", uploadId: u2 }))).body.state, "matched");
+    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box2", uploadId: u2 }))).body.state, "received");
     const u1 = await upload("box1", "s2d-b1", "clear-B17.png");
-    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box1", uploadId: u1 }))).body.state, "mismatched");
+    assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box1", uploadId: u1 }))).body.state, "received");
     for (const k of ["s2d-b3a", "s2d-b3b", "s2d-b3c"]) {
       const u = await upload("box3", k, "covered-B71.png");
-      assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box3", uploadId: u }))).body.state, "unclear");
+      assert.equal((await jsonOf(await post(captureH, { missionId, token: worker, itemId: "box3", uploadId: u }))).body.state, "retake");
       if (k !== "s2d-b3c") assert.equal((await jsonOf(await post(closeupH, { missionId, token: worker, itemId: "box3" }))).status, 200);
     }
     assert.equal((await jsonOf(await post(inconcH, { missionId, token: worker, itemId: "box3" }))).status, 200);
@@ -207,7 +207,7 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
     try {
       const first = await jsonOf(await post(captureH, { missionId: mid, token: wt, itemId: "box2", uploadId: uid }));
       assert.equal(first.status, 200);
-      assert.equal(first.body.state, "matched");
+      assert.equal(first.body.state, "received");
       assert.equal(sparkCalls, 1);
       assert.equal(samCalls, 1);
       // A full replay settles nothing twice and never refetches.

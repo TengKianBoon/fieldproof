@@ -88,25 +88,25 @@ async function driveTerminal(): Promise<{ mid: string; wt: string; up1: string; 
   const reader = ctx().reader as MockPngReader;
   reader.register(clear, "B12");
   const up1 = await upload(mid, wt, "box1", "k1", clear);
-  assert.equal((await capture(mid, wt, "box1", up1)).state, "matched");
+  assert.equal((await capture(mid, wt, "box1", up1)).state, "received");
   // Inconclusive needs the full loop: unclear, close-up, unclear, close-up,
   // unclear, then mark (two close-ups used, still unclear).
   const up2a = await upload(mid, wt, "box2", "k2a", covered);
-  assert.equal((await capture(mid, wt, "box2", up2a)).state, "unclear");
+  assert.equal((await capture(mid, wt, "box2", up2a)).state, "retake");
   const closeup = async (itemId: string): Promise<number> =>
     (await jsonOf(await post(closeupH, { missionId: mid, token: wt, itemId }))).status;
   assert.equal(await closeup("box2"), 200);
   const up2b = await upload(mid, wt, "box2", "k2b", covered);
-  assert.equal((await capture(mid, wt, "box2", up2b)).state, "unclear");
+  assert.equal((await capture(mid, wt, "box2", up2b)).state, "retake");
   assert.equal(await closeup("box2"), 200);
   const up2c = await upload(mid, wt, "box2", "k2c", covered);
-  assert.equal((await capture(mid, wt, "box2", up2c)).state, "unclear");
+  assert.equal((await capture(mid, wt, "box2", up2c)).state, "retake");
   assert.equal((await jsonOf(await post(incH, { missionId: mid, token: wt, itemId: "box2" }))).status, 200);
   const up3a = await upload(mid, wt, "box3", "k3a", Buffer.from([7, 7, 7]));
-  assert.equal((await capture(mid, wt, "box3", up3a)).state, "unclear");
+  assert.equal((await capture(mid, wt, "box3", up3a)).state, "retake");
   assert.equal((await jsonOf(await post(closeupH, { missionId: mid, token: wt, itemId: "box3" }))).status, 200);
   const up3b = await upload(mid, wt, "box3", "k3b", clear);
-  assert.equal((await capture(mid, wt, "box3", up3b)).state, "mismatched");
+  assert.equal((await capture(mid, wt, "box3", up3b)).state, "received");
   return { mid, wt, up1, up3a };
 }
 
@@ -202,7 +202,7 @@ describe("Task 0b finished-item refusal", () => {
     assert.equal(second.body.uploadId, first.body.uploadId);
     // Legitimate unclear path still opens a new upload after closeup.
     const up = await upload(mid, wt, "box2", "ku", Buffer.from([9, 9, 9]));
-    assert.equal((await capture(mid, wt, "box2", up)).state, "unclear");
+    assert.equal((await capture(mid, wt, "box2", up)).state, "retake");
     assert.equal((await jsonOf(await post(closeupH, { missionId: mid, token: wt, itemId: "box2" }))).status, 200);
     const reopen = await jsonOf(await post(initH, {
       missionId: mid, token: wt, idempotencyKey: "ku2",

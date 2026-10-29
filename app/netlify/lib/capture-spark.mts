@@ -17,7 +17,7 @@ import {
   SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
 import { metaDiag } from "../../shared/agentDraft.ts";
-import { CAPTURABLE_ITEM } from "../../shared/missions.ts";
+import { CAPTURABLE_ITEM, workerItemState } from "../../shared/missions.ts";
 import { fail } from "../../shared/types.ts";
 import type { LedgerEntry } from "../../shared/ledger.ts";
 import type { Readability } from "../../shared/types.ts";
@@ -184,7 +184,8 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
       return { state: (cap.value as { observed: Record<string, { state: string }> }).observed[itemId].state };
     });
     if ("error" in r2) return json(statusFor(r2.error), { error: r2.error });
-    const state = r2.state;
+    // Worker-facing state only: the stored comparison is preserved untouched.
+    const state = workerItemState(r2.state);
     // S5: one SAM call per stored capture — reserve in its own transact, one
     // fetch outside every retry loop, settle plus idempotent attach in a
     // final transact. Best effort: the capture stands when SAM finds nothing.

@@ -89,7 +89,7 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
     const up = await upload(missionId, worker, "box2", "cap1", "clear-B17.png");
     const good = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box2", uploadId: up })));
     assert.equal(good.status, 200);
-    assert.equal(good.body.state, "matched");
+    assert.equal(good.body.state, "received");
     const evil = await jsonOf(
       await handlerCapture(req({ missionId, token: worker, itemId: "box1", uploadId: up, observedLabel: "B12", readable: true })),
     );
@@ -135,11 +135,11 @@ describe("HTTP wiring + B1/B2 upload-bound capture", () => {
     assert.equal((await jsonOf(await toReviewHandler(req({ missionId, token: worker })))).body.error, "items_open");
     const u1 = await upload(missionId, worker, "box1", "g-b1", "clear-B17.png");
     const c1 = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box1", uploadId: u1 })));
-    assert.equal(c1.body.state, "mismatched");
+    assert.equal(c1.body.state, "received");
     for (const k of ["g3a", "g3b", "g3c"]) {
       const u = await upload(missionId, worker, "box3", k, "covered-B71.png");
       const c = await jsonOf(await handlerCapture(req({ missionId, token: worker, itemId: "box3", uploadId: u })));
-      assert.equal(c.body.state, "unclear");
+      assert.equal(c.body.state, "retake");
       if (k !== "g3c") {
         assert.equal((await jsonOf(await handlerCloseup(req({ missionId, token: worker, itemId: "box3" })))).status, 200);
       }

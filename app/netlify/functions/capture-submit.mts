@@ -5,6 +5,7 @@
 import { blobsEndpoint, ctx, json, needToken, uploadBytes } from "../lib/_ctx.mts";
 import { captureSparkHandler } from "../lib/capture-spark.mts";
 import { attachBox, MOCK_BOX } from "../../shared/samBoxes.ts";
+import { workerItemState } from "../../shared/missions.ts";
 import { readerMode } from "../../shared/sparkReader.ts";
 import { sha256Hex, sha256Equal } from "../../shared/hash.ts";
 
@@ -53,5 +54,6 @@ async function mockCapture(req: Request): Promise<Response> {
   const state = m.observed[itemId].state;
   // READER=mock: attach the fixed stand-in box (never a real locate).
   attachBox(ctx().missions, missionId, itemId, uploadId, MOCK_BOX, "mock");
-  return json(200, { missionId, itemId, state });
+  // Worker-facing state only: the stored comparison is preserved untouched.
+  return json(200, { missionId, itemId, state: workerItemState(state) });
 }

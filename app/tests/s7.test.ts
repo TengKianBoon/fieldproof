@@ -97,7 +97,7 @@ describe("post-test fixes", () => {
       const { default: captureH } = await import("../netlify/functions/capture-submit.mts");
       const r = await post(captureH, { missionId, token: worker, itemId: "box1", uploadId: uid });
       assert.equal(r.status, 200);
-      assert.equal(((await r.json()) as { state: string }).state, "unclear");
+      assert.equal(((await r.json()) as { state: string }).state, "retake");
     } finally {
       restore();
     }
