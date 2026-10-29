@@ -21,7 +21,12 @@ export default async function handler(req: Request): Promise<Response> {
 
 type Outcome =
   | { kind: "brief"; status: 200; brief: ReviewBrief; fingerprint: string; cached: boolean }
-  | { kind: "fail"; status: number; error: string };
+  | { kind: "fail"; status: number; error: string; diag?: string };
+
+// R1c: failure bodies carry the sanitized cause when there is one.
+function failBody(o: { error: string; diag?: string }): Record<string, string> {
+  return o.diag === undefined ? { error: o.error } : { error: o.error, diag: o.diag };
+}
 
 function rawRunning(raw: string | null): { owner: string; attempt: number } | null {
   if (raw === null) return null;
@@ -39,7 +44,7 @@ function doneReq(rec: BriefReq): Outcome {
   if (rec.output !== undefined) {
     return { kind: "brief", status: 200, brief: rec.output.brief, fingerprint: rec.output.fingerprint, cached: true };
   }
-  return { kind: "fail", status: rec.httpStatus ?? 503, error: rec.error ?? "brief_uncertain" };
+  return { kind: "fail", status: rec.httpStatus ?? 503, error: rec.error ?? "brief_uncertain", ...(rec.diag === undefined ? {} : { diag: rec.diag }) };
 }
 
 export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = fetch): Promise<Response> {
@@ -153,7 +158,7 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
       return { kind: "run", ticket };
     });
     if (p1.kind === "brief") return json(p1.status, { brief: p1.brief, fingerprint: p1.fingerprint, cached: p1.cached });
-    if (p1.kind === "fail") return json(p1.status, { error: p1.error });
+    if (p1.kind === "fail") return json(p1.status, failBody(p1));
     ticket = p1.ticket;
   } catch (e) {
     if (e instanceof Error && e.message === "store_conflict") return json(409, { error: "store_conflict" });
@@ -183,11 +188,14 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
       if (!fetched.ok) {
         const clientError = fetched.error === "brief_invalid" ? "brief_invalid" : "brief_uncertain";
         const httpStatus = fetched.error === "brief_invalid" ? 502 : 503;
+        // R1c: the sanitized cause (fixed words plus metaDiag's checked
+        // type/code; never the prompt, key, token or provider text).
+        const diag = fetched.error;
         finishAttempt(st, cacheKey, ticket.mineRaw, { error: clientError });
         writeBriefReq(st, missionId, requestId, {
-          v: 1, missionId, fingerprint, phase: "done", error: clientError, httpStatus, leaseUntil: nowLease(),
+          v: 1, missionId, fingerprint, phase: "done", error: clientError, diag, httpStatus, leaseUntil: nowLease(),
         });
-        return { kind: "fail", status: httpStatus, error: clientError };
+        return { kind: "fail", status: httpStatus, error: clientError, diag };
       }
       const createdAt = new Date().toISOString();
       // Fenced completion: the cache keeps exactly one winner. Either way we
@@ -200,7 +208,9 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
       return { kind: "brief", status: 200, brief: fetched.brief, fingerprint, cached: false };
     });
     if (p2.kind === "brief") return json(p2.status, { brief: p2.brief, fingerprint: p2.fingerprint, cached: p2.cached });
-    return json(p2.status, { error: p2.error });
+    // R1c: one sanitized line in the function log, outside the retry loop.
+    console.warn(`review-brief failed: ${p2.error}${p2.diag === undefined ? "" : ` (${p2.diag})`}`);
+    return json(p2.status, failBody(p2));
   } catch (e) {
     if (e instanceof Error && e.message === "store_conflict") return json(409, { error: "store_conflict" });
     throw e;

@@ -350,7 +350,7 @@ describe("A1b ambiguity, staleness, and leakage", () => {
     const { mid, rt } = await reviewMission();
     const counter = { n: 0 };
     const seen: unknown[] = [];
-    const bad = okFetch(counter, seen, { summary: "x".repeat(281) });
+    const bad = okFetch(counter, seen, { next_action: "auto_decide" });
     const r = await brief(mid, rt, "r-bad1", bad);
     assert.equal(r.status, 502);
     assert.equal(r.body.error, "brief_invalid");

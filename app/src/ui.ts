@@ -874,7 +874,12 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         + (r.brief.recommendations.length === 0 ? "" : `<ul>${r.brief.recommendations.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`)
         + `<p class="muted">Suggested next step: ${esc(act)}</p></div>`;
     } catch (e) {
-      bout.innerHTML = `<p class="err">AI brief unavailable right now; your review is unaffected.</p>`;
+      // R1c: show the short reference code so a failure can be diagnosed
+      // without developer tools (sanitized on the server; escaped here).
+      const code = e instanceof Error ? e.message : "error";
+      const diag = (e as { diag?: unknown } | null)?.diag;
+      const ref = typeof diag === "string" && diag !== "" ? `${code} \u00b7 ${diag}` : code;
+      bout.innerHTML = `<p class="err">AI brief unavailable right now; your review is unaffected.</p><p class="muted">Reference: ${esc(ref)}</p>`;
     } finally {
       bb.disabled = false;
     }
