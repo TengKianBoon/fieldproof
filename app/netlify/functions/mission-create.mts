@@ -6,7 +6,7 @@
 import { blobsScope, ctx, json, secret } from "../lib/_ctx.mts";
 import { mintLink } from "../../shared/links.ts";
 import { requesterIdentity } from "../../shared/identity.ts";
-import { resolveInstant } from "../../shared/timezone.ts";
+import { hasZoneSuffix, resolveInstant } from "../../shared/timezone.ts";
 import { boxId, CODE_RE, MAX_ITEMS, MIN_ITEMS } from "../../shared/missions.ts";
 import type { ExpectedItem } from "../../shared/types.ts";
 
@@ -38,6 +38,11 @@ export default async function handler(req: Request): Promise<Response> {
     const r = resolveInstant(deadline, body.timezone);
     if (!r.ok) return json(400, { error: r.error });
     deadline = r.instant;
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(deadline) && !hasZoneSuffix(deadline)) {
+    // Task 0d: a bare wall time without an explicit zone choice is refused —
+    // it must never silently gain a zone. Absolute timestamps keep the
+    // legacy path, as do non-wall inputs.
+    return json(400, { error: "timezone_required" });
   }
   const created = await blobsScope(null, {}, () => {
     const { missions } = ctx();

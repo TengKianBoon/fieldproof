@@ -9,6 +9,7 @@
 import { costOf, planningCapPerCall, type Usage } from "./spikecost.ts";
 import { fail } from "./types.ts";
 import { CODE_RE, MAX_ITEMS } from "./missions.ts";
+import { sha256Hex } from "./hash.ts";
 import type { Ledger } from "./ledger.ts";
 
 export const AGENT_MODEL = "muse-spark-1.3";
@@ -105,6 +106,16 @@ export interface AgentDeps {
   timeoutMs?: number;
 }
 
+export interface AgentCallDeps {
+  fetchFn?: typeof fetch;
+  key?: string;
+  timeoutMs?: number;
+}
+
+export type AgentCallout =
+  | { ok: true; draft: MissionDraft; actual: number | null; status: string }
+  | { ok: false; error: string };
+
 export type AgentReadout =
   | { ok: true; draft: MissionDraft; costMillicents: number; uncertain: boolean; status: string }
   | { ok: false; error: string };
@@ -122,24 +133,11 @@ export function metaDiag(text: string): string {
   }
 }
 
-export async function agentDraft(
-  description: string,
-  ledger: Ledger,
-  args: { caller: string; missionId: string; requestId: string; purpose?: string },
-  deps: AgentDeps = {},
-): Promise<AgentReadout> {
-  if (typeof description !== "string" || description.trim() === "" || description.length > AGENT_DESC_LIMIT) {
-    return { ok: false, error: "bad_description" };
-  }
-  const max = Math.round(planningCapPerCall() * 100_000);
-  const settledAtMax = () => ledger.settle(args.caller, args.missionId, args.requestId, max);
-  const r = ledger.reserve(args.caller, args.missionId, args.requestId, args.purpose ?? "agent-draft", max);
-  if (!r.ok) return { ok: false, error: r.error as string };
+// Task 0d: the pure model call — fetch, validate, price — with no ledger or
+// store access. Endpoints run it OUTSIDE all retryable scopes.
+export async function agentFetch(description: string, deps: AgentCallDeps = {}): Promise<AgentCallout> {
   const key = deps.key ?? process.env.META_API_KEY;
-  if (typeof key !== "string" || key === "") {
-    ledger.release(args.caller, args.missionId, args.requestId);
-    return { ok: false, error: "no_key" };
-  }
+  if (typeof key !== "string" || key === "") return { ok: false, error: "no_key" };
   const fetchFn = deps.fetchFn ?? fetch;
   let res: Response;
   try {
@@ -150,11 +148,9 @@ export async function agentDraft(
       body: JSON.stringify(buildAgentRequest(description)),
     });
   } catch {
-    settledAtMax();
     return { ok: false, error: "network_error" };
   }
   if (!res.ok) {
-    settledAtMax();
     let diag = "";
     try {
       diag = metaDiag(await res.text());
@@ -169,23 +165,63 @@ export async function agentDraft(
   } catch {
     parsed = null;
   }
-  if (parsed === null) {
-    settledAtMax();
-    return { ok: false, error: "bad_response" };
-  }
+  if (parsed === null) return { ok: false, error: "bad_response" };
   const pr = parseAgentDraft(parsed);
   const usage = (parsed as { usage?: unknown }).usage ?? null;
-  if (!pr.ok) {
-    settledAtMax();
-    return { ok: false, error: pr.error };
-  }
+  if (!pr.ok) return { ok: false, error: pr.error };
   const measured = costOf(usage as Usage | null);
-  if (measured === null) {
-    settledAtMax();
-    return { ok: true, draft: pr.draft, costMillicents: max, uncertain: true, status: "unknown_cost" };
+  if (measured === null) return { ok: true, draft: pr.draft, actual: null, status: "unknown_cost" };
+  return { ok: true, draft: pr.draft, actual: Math.round(measured * 100_000), status: "completed" };
+}
+
+export async function agentDraft(
+  description: string,
+  ledger: Ledger,
+  args: { caller: string; missionId: string; requestId: string; purpose?: string },
+  deps: AgentDeps = {},
+): Promise<AgentReadout> {
+  if (typeof description !== "string" || description.trim() === "" || description.length > AGENT_DESC_LIMIT) {
+    return { ok: false, error: "bad_description" };
   }
-  const actual = Math.round(measured * 100_000);
+  const max = Math.round(planningCapPerCall() * 100_000);
+  const r = ledger.reserve(args.caller, args.missionId, args.requestId, args.purpose ?? "agent-draft", max);
+  if (!r.ok) return { ok: false, error: r.error as string };
+  const key = deps.key ?? process.env.META_API_KEY;
+  if (typeof key !== "string" || key === "") {
+    ledger.release(args.caller, args.missionId, args.requestId);
+    return { ok: false, error: "no_key" };
+  }
+  const out = await agentFetch(description, { fetchFn: deps.fetchFn, key, timeoutMs: deps.timeoutMs });
+  if (!out.ok) {
+    if (out.error === "no_key") ledger.release(args.caller, args.missionId, args.requestId);
+    else ledger.settle(args.caller, args.missionId, args.requestId, max);
+    return out;
+  }
+  const actual = out.actual ?? max;
   const s = ledger.settle(args.caller, args.missionId, args.requestId, actual);
   if (!s.ok) return { ok: false, error: s.error as string };
-  return { ok: true, draft: pr.draft, costMillicents: actual, uncertain: false, status: "completed" };
+  return {
+    ok: true, draft: out.draft, costMillicents: actual,
+    uncertain: out.actual === null, status: out.status,
+  };
 }
+
+// Task 0d: cache identity for the agent path — description hash plus the
+// model/effort/tool/schema digest, so the same words under a different
+// config never share a cached draft.
+export function agentConfigDigest(): string {
+  return sha256Hex(Buffer.from(
+    [AGENT_MODEL, AGENT_EFFORT, AGENT_TOOL_NAME, String(AGENT_MAX_OUTPUT_TOKENS),
+      JSON.stringify(buildAgentRequest("").tools)].join("|"),
+    "utf8",
+  ));
+}
+
+export function agentCacheKey(description: unknown): string | null {
+  if (typeof description !== "string" || description.trim() === "" || description.length > AGENT_DESC_LIMIT) return null;
+  return `agentcache:${sha256Hex(Buffer.from(description, "utf8"))}:${agentConfigDigest().slice(0, 16)}`;
+}
+
+export const AGENT_CALLER = "agent";
+export const AGENT_MISSION = "drafts";
+export const AGENT_PURPOSE = "agent-draft";

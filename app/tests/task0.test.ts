@@ -379,16 +379,23 @@ describe("Task 0 timezone correctness", () => {
       }));
       assert.equal(badZone.status, 400);
       assert.equal(badZone.body.error, "bad_zone");
+      // Task 0d: a bare wall time without a zone choice is refused; an
+      // absolute timestamp keeps the legacy path.
       const noZone = await jsonOf(await post(createH, {
         siteLabel: "Dock A", expectedLabels: ["B12"], deadline: wall,
       }));
-      assert.equal(noZone.status, 200);
-      const mid2 = String(noZone.body.missionId);
+      assert.equal(noZone.status, 400);
+      assert.equal(noZone.body.error, "timezone_required");
+      const absolute = await jsonOf(await post(createH, {
+        siteLabel: "Dock A", expectedLabels: ["B12"], deadline: "2026-10-30T10:00:00.000Z",
+      }));
+      assert.equal(absolute.status, 200);
+      const mid2 = String(absolute.body.missionId);
       const legacy = await blobsScope(mid2, {}, () => {
         const m = ctx().missions.load(mid2);
         return m === null ? null : (m as { deadline: string }).deadline;
       });
-      assert.equal(legacy, wall);
+      assert.equal(legacy, "2026-10-30T10:00:00.000Z");
     } finally {
       __setBlobsTestBackends(null);
     }
