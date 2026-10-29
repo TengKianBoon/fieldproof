@@ -4,6 +4,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildReport, reportDocument, type ReportMission } from "../src/report.ts";
+import { summarizeReview, summaryCompact, summaryLines } from "../shared/reviewSummary.ts";
+import { Missions } from "../shared/missions.ts";
+import { MemoryStore } from "../shared/store.ts";
 
 function mission(): ReportMission {
   return {
@@ -173,5 +176,92 @@ describe("Stage 1a remedy: isolation, readiness, labels", () => {
     assert.ok(doc.includes("ab".repeat(32)));
     assert.ok(doc.includes('class="loc"'));
     assert.ok(doc.includes("word-break:break-all"));
+  });
+});
+
+describe("Stage 2a two-axis review summary", () => {
+  function mixed(): ReportMission {
+    return {
+      missionId: "m-mixed-0001",
+      state: "in_review",
+      siteLabel: "Dock A",
+      deadline: "2026-11-30T10:00:00.000Z",
+      createdAt: "2026-10-29T09:00:00.000Z",
+      expected: [
+        { itemId: "box1", expectedLabel: "B12" },
+        { itemId: "box2", expectedLabel: "B17" },
+        { itemId: "box3", expectedLabel: "B23" },
+        { itemId: "box4", expectedLabel: "B31" },
+      ],
+      observed: {
+        box1: { observedLabel: "B12", readability: "clear", state: "matched", uploadId: "u1", serverHash: "aa" },
+        box2: { observedLabel: "B71", readability: "clear", state: "mismatched", uploadId: "u2", serverHash: "bb" },
+        box3: { observedLabel: null, readability: "blurred", state: "unclear", uploadId: "u3", serverHash: "cc" },
+      },
+      reviewerDecision: { box1: "confirmed_match", box3: "inconclusive" },
+    };
+  }
+
+  it("counts reconcile to N on both axes", () => {
+    const s = summarizeReview(mixed());
+    assert.equal(s.total, 4);
+    assert.equal(s.matched + s.mismatched + s.unclear + s.noReading, 4);
+    assert.deepEqual([s.matched, s.mismatched, s.unclear, s.noReading], [1, 1, 1, 1]);
+    assert.equal(s.awaiting + s.confirmedMatch + s.confirmedMismatch + s.ruledInconclusive, 4);
+    assert.deepEqual([s.awaiting, s.confirmedMatch, s.confirmedMismatch, s.ruledInconclusive], [2, 1, 0, 1]);
+  });
+
+  it("never calls an unreviewed mismatch confirmed", () => {
+    const text = summaryLines(summarizeReview(mixed())).join("\n");
+    assert.ok(text.includes("1 mismatched reading"));
+    assert.ok(!text.includes("Confirmed mismatch"));
+    assert.ok(text.includes("2 awaiting reviewer decision"));
+    assert.ok(text.includes("1 match out of 4"));
+  });
+
+  it("phone, print, and JSON surfaces agree", () => {
+    const m = mixed();
+    const data = buildReport(m);
+    assert.deepEqual(data.summary, summarizeReview(m));
+    const doc = reportDocument(data, [null, null, null, null]);
+    assert.ok(doc.includes(`Summary: ${summaryCompact(data.summary)}`));
+    assert.ok(doc.includes("1 mismatched reading"));
+  });
+
+  it("the export pack carries the same summary without changing evidence", () => {
+    const store = new MemoryStore();
+    const stored = {
+      missionId: "m-pack-1", version: 3, siteLabel: "Dock A",
+      expected: [
+        { itemId: "box1", expectedLabel: "B12" },
+        { itemId: "box2", expectedLabel: "B17" },
+      ],
+      observed: {
+        box1: {
+          itemId: "box1", observedLabel: "B12", readability: "clear", closeupsUsed: 0,
+          state: "matched", uploadId: "u1", serverHash: "aa",
+        },
+        box2: {
+          itemId: "box2", observedLabel: "B71", readability: "clear", closeupsUsed: 0,
+          state: "mismatched", uploadId: "u2", serverHash: "bb",
+        },
+      },
+      deadline: "2026-11-30T10:00:00.000Z",
+      state: "decided", consentVersion: "v1", workerId: "w",
+      reviewerDecision: { box1: "confirmed_match", box2: "confirmed_mismatch" },
+      createdAt: "2026-10-29T09:00:00.000Z",
+    };
+    store.set("mission:m-pack-1", JSON.stringify(stored));
+    const out = new Missions(store).exportPack("m-pack-1", 4 * 1024 * 1024);
+    assert.equal(out.ok, true);
+    if (!out.ok) return;
+    const pack = JSON.parse((out.value as { pack: string }).pack) as {
+      mission: typeof stored; summary: ReturnType<typeof summarizeReview>; exportedAt: string;
+    };
+    assert.deepEqual(pack.mission, stored);
+    assert.deepEqual(pack.summary, {
+      total: 2, matched: 1, mismatched: 1, unclear: 0, noReading: 0,
+      awaiting: 0, confirmedMatch: 1, confirmedMismatch: 1, ruledInconclusive: 0,
+    });
   });
 });

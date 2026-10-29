@@ -6,6 +6,7 @@ import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls } from "./client.ts";
 import { buildReport, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
+import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -518,7 +519,10 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   }
   const note = flash;
   flash = "";
-  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>
+  // Stage 2a: concise two-axis summary above the item cards — exceptions
+  // first, matches as a count, undecided mismatches never "confirmed".
+  const reviewSummary = `<div class="card" id="r-summary"><p><strong>Summary</strong></p>${summaryLines(summarizeReview(m)).map((l) => `<p>${esc(l)}</p>`).join("")}</div>`;
+  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewSummary}
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>

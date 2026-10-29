@@ -5,6 +5,10 @@
 // string is escaped HERE, so renderers insert these strings WITHOUT
 // re-escaping. No network, no model calls, no timestamps invented: the only
 // times surfaced are the server record times, labelled as such.
+import {
+  summarizeReview, summaryCompact,
+  type ReviewSummary,
+} from "../shared/reviewSummary.ts";
 export interface ReportObserved {
   observedLabel?: string | null;
   readability?: string;
@@ -52,6 +56,7 @@ export interface ReportData {
   unresolved: string[];
   mismatched: string[];
   inconclusive: string[];
+  summary: ReviewSummary;
 }
 
 function resc(s: string): string {
@@ -182,6 +187,7 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
     unresolved,
     mismatched,
     inconclusive,
+    summary: summarizeReview(m),
   };
 }
 
@@ -222,6 +228,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `.box{position:relative;display:inline-block;max-width:100%}.box img{display:block}@media print{.card img{max-height:8cm;width:auto;max-width:100%;object-fit:contain}.card{break-inside:avoid}}.loc{position:absolute;border:3px solid #0a0;box-sizing:border-box}.loc span{background:#fff;color:#111;border:1px solid #111;font-size:.8rem;print-color-adjust:exact;-webkit-print-color-adjust:exact}`
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
+    + `<p>Summary: ${resc(summaryCompact(data.summary))}</p>`
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
     + group("Awaiting reviewer decision", data.unresolved)
     + group("Confirmed mismatches", data.mismatched)

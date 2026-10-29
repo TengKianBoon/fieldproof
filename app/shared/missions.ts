@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
+import { summarizeReview } from "./reviewSummary.ts";
 import type { KVStore } from "./store.ts";
 
 export const MAX_CLOSEUPS = 2;
@@ -242,7 +243,9 @@ export class Missions {
     const m = this.load(missionId);
     if (m === null) return fail("unknown_mission");
     if (m.state !== "decided") return fail("not_decided");
-    const pack = JSON.stringify({ mission: m, exportedAt: new Date().toISOString() });
+    // Stage 2a: the same deterministic two-axis summary rides in the pack,
+    // derived from the stored mission without changing evidence or state.
+    const pack = JSON.stringify({ mission: m, summary: summarizeReview(m), exportedAt: new Date().toISOString() });
     const bytes = Buffer.byteLength(pack, "utf8");
     if (bytes > maxBytes) return fail("export_too_large");
     return ok({ pack, bytes });
