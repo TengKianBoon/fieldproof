@@ -127,7 +127,7 @@ Add it to any MCP client that runs local (stdio) servers, with Node 24:
 4. **A person selects one bid, and the professional accepts.** Exactly one FieldProof check is created for that job, even if both click at once, and the professional gets the field link.
 5. **The accepted engagement is recorded** (who, scope, value, date). There are no payments in the app; a success fee would be invoiced separately. The fee shown is an example, not yet live.
 
-**For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). The MCP server holds a read-only job link; it never receives the link that publishes or selects, so an agent cannot publish, invite, choose or accept.
+**For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). For a job an agent drafts, the server issues only a read-only job link; the link that publishes, invites and selects is never sent to the agent or its MCP server. A person claims the job on the website with the access code, so an agent cannot publish, invite, choose or accept.
 
 ## Built during the Hackathon
 
@@ -152,4 +152,4 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - The evidence pack is unsigned JSON.
 - Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
 - FieldProof does not certify regulatory compliance.
-- Jobs and bids is a pilot: synthetic jobs only so far, introduction terms are a pilot draft, and no fee is charged by the app.
+- Jobs and bids is a pilot: synthetic jobs only so far, introduction terms are a pilot draft, and no fee is charged by the app. Claiming a job uses the site's one shared access code; per-client accounts come later. Private bid links work for anyone who holds them, so they are shared only with the invited professional.

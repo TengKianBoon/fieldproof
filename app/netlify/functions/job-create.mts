@@ -68,8 +68,14 @@ export default async function handler(req: Request): Promise<Response> {
   }
   if (!created.ok) return json(statusFor(created.error as string), { error: created.error });
   const j = created.value as FieldJob;
-  // J1b: the owner link is for the person who publishes and selects; the
-  // agent link is read-only (status). An MCP client should hand the model the
-  // agent link only and show the owner link to the person.
-  return json(200, { jobId: j.jobId, status: j.status, ownerToken: ownerToken(j.jobId), agentToken: agentToken(j.jobId) });
+  // J1b/J3b: the agent link is read-only (status). For a job an AI agent
+  // drafted, the owner link is NOT issued here at all: a person claims it on
+  // the website with the access code (job-claim), so neither the agent nor its
+  // MCP server ever receives the link that publishes, invites or selects.
+  return json(200, {
+    jobId: j.jobId,
+    status: j.status,
+    ...(j.createdBy === "agent" ? {} : { ownerToken: ownerToken(j.jobId) }),
+    agentToken: agentToken(j.jobId),
+  });
 }

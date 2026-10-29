@@ -14,6 +14,7 @@ const createH = (await import("../netlify/functions/job-create.mts")).default;
 const ownerH = (await import("../netlify/functions/job-owner.mts")).default;
 const bidH = (await import("../netlify/functions/job-bid.mts")).default;
 const statusH = (await import("../netlify/functions/job-status.mts")).default;
+const claimH = (await import("../netlify/functions/job-claim.mts")).default;
 
 type J = { status: number; body: Record<string, unknown> };
 async function call(h: (r: Request) => Promise<Response>, body: unknown): Promise<J> {
@@ -32,7 +33,8 @@ describe("J1b agent read-only job link", () => {
     const c = await call(createH, payload);
     assert.equal(c.status, 200);
     const jobId = String(c.body.jobId);
-    const owner = String(c.body.ownerToken);
+    assert.equal("ownerToken" in c.body, false);
+    const owner = String((await call(claimH, { jobId })).body.ownerToken);
     const agent = String(c.body.agentToken);
     assert.notEqual(agent, owner);
     const s = await call(statusH, { jobId, token: agent });

@@ -30,6 +30,13 @@ const fakeFetch = (async (url: string, init?: RequestInit) => {
   return h(new Request(`http://l/${path}`, { method: "POST", headers: init?.headers, body: init?.body as string }));
 }) as unknown as typeof fetch;
 
+function toJobBody(j: typeof job): Record<string, unknown> {
+  return {
+    title: j.title, outcome: j.outcome, region: j.region, windowStart: j.window_start, windowEnd: j.window_end,
+    budget: { min: j.budget_min, max: j.budget_max, currency: "USD" }, bidDeadline: j.bid_deadline, siteLabel: j.site,
+    items: j.items.map((c) => ({ expectedLabel: c.toUpperCase() })), checkDeadline: j.check_deadline,
+  };
+}
 const job = {
   title: "Sample-bag tag check", outcome: "Photograph each sample bag tag.", region: "Riau, Sumatra",
   window_start: "2030-11-10", window_end: "2030-11-12", budget_min: 150, budget_max: 300, currency: "usd",
@@ -57,6 +64,14 @@ describe("J3 agents and Jobs and bids", () => {
     assert.equal(sc.claimLink, `https://fp.example#/jobs/claim/${sc.jobId}`);
     const all = JSON.stringify(r);
     assert.ok(!/token/i.test(all.replace("get_job_status", "")), "no token reaches the model");
+    // J3b: the MCP server itself never received an owner link (transport, not only the model).
+    const direct = await createH(new Request("http://l/job-create", { method: "POST", body: JSON.stringify({ ...toJobBody(job), createdBy: "agent", idempotencyKey: "direct-agent" }) }));
+    const directBody = (await direct.json()) as Record<string, unknown>;
+    assert.equal(direct.status, 200);
+    assert.equal("ownerToken" in directBody, false);
+    assert.equal(typeof directBody.agentToken, "string");
+    const person = await createH(new Request("http://l/job-create", { method: "POST", body: JSON.stringify({ ...toJobBody(job), title: "Person job" }) }));
+    assert.equal(typeof ((await person.json()) as Record<string, unknown>).ownerToken, "string");
     const sent = seen.find((x) => x.path === "job-create") as { body: Record<string, unknown>; headers: Headers };
     assert.equal(sent.body.createdBy, "agent");
     assert.equal(typeof sent.body.idempotencyKey, "string");

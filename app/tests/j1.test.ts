@@ -15,6 +15,7 @@ process.env.JOBS_ENABLED = "on";
 const createH = (await import("../netlify/functions/job-create.mts")).default;
 const ownerH = (await import("../netlify/functions/job-owner.mts")).default;
 const bidH = (await import("../netlify/functions/job-bid.mts")).default;
+const claimH = (await import("../netlify/functions/job-claim.mts")).default;
 const { ctx } = await import("../netlify/lib/_ctx.mts");
 const { verifyLink } = await import("../shared/links.ts");
 const { engagementMissionId, hasContactDetails, EXAMPLE_FEE_RATE } = await import("../shared/fieldJobs.ts");
@@ -87,7 +88,10 @@ describe("J1 drafts, publishing and screening", () => {
     assert.equal(c.status, 200);
     assert.equal(c.body.status, "draft");
     const jobId = String(c.body.jobId);
-    const owner = String(c.body.ownerToken);
+    // J3b: an agent's draft never returns the owner link; a person claims it.
+    assert.equal("ownerToken" in c.body, false);
+    assert.equal(typeof c.body.agentToken, "string");
+    const owner = String((await call(claimH, { jobId })).body.ownerToken);
     const early = await call(ownerH, { jobId, token: owner, action: "invite", name: "Ayu" });
     assert.equal(early.body.error, "not_open");
     const p = await call(ownerH, { jobId, token: owner, action: "publish" });
