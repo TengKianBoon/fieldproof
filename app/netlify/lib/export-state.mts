@@ -7,6 +7,7 @@
 import { ctx, json, secret, isRevoked } from "./_ctx.mts";
 import { verifyLink } from "../../shared/links.ts";
 import { workerItemState } from "../../shared/missions.ts";
+import { briefFingerprint } from "../../shared/reviewBrief.ts";
 import { publicCheckin } from "../../shared/checkin.ts";
 import type { Mission } from "../../shared/types.ts";
 
@@ -70,7 +71,7 @@ export async function stateHandler(req: Request): Promise<Response> {
       siteLocation: m.siteLocation === undefined ? undefined : { radiusM: m.siteLocation.radiusM },
       checkin: m.checkin === undefined ? undefined : { attempts: m.checkin.attempts, fix: publicCheckin(m.checkin.fix, m.checkin.attempts) },
     };
-    return json(200, { mission: redacted, viewerRole: role });
+    return json(200, { mission: redacted, viewerRole: role, briefFingerprint: briefFingerprint(m) });
   }
-  return json(200, { mission: m, viewerRole: role });
+  return json(200, { mission: m, viewerRole: role, briefFingerprint: briefFingerprint(m) });
 }

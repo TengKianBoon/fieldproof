@@ -239,6 +239,9 @@ export const calls = {
     fix: { latitude: number; longitude: number; accuracyM: number; fixTime: string },
     fetchFn?: FetchFn,
   ) => post("location-checkin", { missionId, token, ...fix }, fetchFn),
+  // A1b: reviewer-only AI brief; requestId is random per deliberate click.
+  brief: (missionId: string, token: string, requestId: string, fetchFn?: FetchFn) =>
+    post("review-brief", { missionId, token, requestId }, fetchFn),
   closeup: (missionId: string, token: string, itemId: string, fetchFn?: FetchFn) =>
     post("closeup-request", { missionId, token, itemId }, fetchFn),
   inconclusive: (missionId: string, token: string, itemId: string, fetchFn?: FetchFn) =>
