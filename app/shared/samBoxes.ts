@@ -42,42 +42,90 @@ export interface SamBox {
   confidence: number;
 }
 
-const BOX_RE = /<\|box;x1=([\d.]+);y1=([\d.]+);x2=([\d.]+);y2=([\d.]+);w=([\d.]+);h=([\d.]+);c=([\d.]+)\|>/g;
+// S1: tolerant box tokens. The documented shape is
+// <|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..;c=..|>, but live photos only ever
+// produced "none found", so the parser no longer depends on field order, on
+// the optional confidence (c, default 0), or on integer formatting, and
+// accepts coordinates already normalised to 0-1 when w/h are absent.
+const BOX_TOKEN_RE = /<\|box;([^|>]*)\|>/g;
+
+function boxFromFields(f: Record<string, number>): SamBox | null {
+  const x1 = f.x1, y1 = f.y1, x2 = f.x2, y2 = f.y2;
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return null;
+  let w = f.w;
+  let h = f.h;
+  if (w === undefined || h === undefined) {
+    if (![x1, y1, x2, y2].every((n) => n >= 0 && n <= 1)) return null;
+    w = 1;
+    h = 1;
+  }
+  if (!(w > 0 && h > 0)) return null;
+  const clamp = (n: number): number => Math.min(1, Math.max(0, n));
+  const box = { x1: clamp(x1 / w), y1: clamp(y1 / h), x2: clamp(x2 / w), y2: clamp(y2 / h), confidence: f.c ?? 0 };
+  return box.x2 > box.x1 && box.y2 > box.y1 ? box : null;
+}
 
 // Parse boxes only; keep the highest-confidence box normalised to 0-1.
 export function parseSamBoxes(outputText: string): SamBox | null {
   let best: SamBox | null = null;
-  BOX_RE.lastIndex = 0;
+  BOX_TOKEN_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = BOX_RE.exec(outputText)) !== null) {
-    const nums = m.slice(1, 8).map(Number);
-    if (nums.some((n) => !Number.isFinite(n))) continue;
-    const [x1, y1, x2, y2, w, h, c] = nums;
-    if (w <= 0 || h <= 0) continue;
-    if (best === null || c > best.confidence) {
-      best = { x1: x1 / w, y1: y1 / h, x2: x2 / w, y2: y2 / h, confidence: c };
+  while ((m = BOX_TOKEN_RE.exec(outputText)) !== null) {
+    const fields: Record<string, number> = {};
+    for (const pair of m[1].split(";")) {
+      const eq = pair.indexOf("=");
+      if (eq <= 0) continue;
+      const v = Number(pair.slice(eq + 1).trim());
+      if (Number.isFinite(v)) fields[pair.slice(0, eq).trim().toLowerCase()] = v;
     }
+    const box = boxFromFields(fields);
+    if (box !== null && (best === null || box.confidence > best.confidence)) best = box;
   }
   return best;
 }
 
+// S1: when no box is parsed, say which kind of "nothing" it was, so a live
+// photo separates a genuine empty detection from a format we cannot read.
+// Integers and fixed words only; never any model text.
+//   "none"                        completed, no text at all (documented zero matches)
+//   "sam:no_text:<kinds>"         no output_text, but other output kinds came back
+//   "sam:unparsed:t<len>:b<n>"    text came back but no usable box (n box tokens seen)
+export function samEmptyStatus(text: string, kinds: string[] = []): string {
+  const t = text.trim();
+  if (t === "") {
+    const other = kinds.filter((k) => k !== "message/output_text");
+    if (other.length === 0) return "none";
+    const words = other.map((k) => k.replace(/[^A-Za-z_/]/g, "")).filter((k) => k !== "").slice(0, 3).join("+").slice(0, 60);
+    return `sam:no_text:${words === "" ? "unknown" : words}`;
+  }
+  const tokens = (t.match(/<\|box/g) ?? []).length;
+  return `sam:unparsed:t${Math.min(t.length, 99999)}:b${tokens}`;
+}
+
 // Walk the real Responses shape and join every output_text part, as with
 // Spark; malformed shapes fail instead of guessing.
-export function parseSamResponse(parsed: unknown): { ok: true; status: string; text: string } | { ok: false; error: string } {
+export function parseSamResponse(parsed: unknown): { ok: true; status: string; text: string; kinds: string[] } | { ok: false; error: string } {
   const p = parsed as { status?: unknown; output?: unknown };
   if (typeof p !== "object" || p === null) return { ok: false, error: "bad_response" };
   const out = (parsed as { output?: unknown }).output;
   if (!Array.isArray(out)) return { ok: false, error: "bad_response" };
   const parts: string[] = [];
+  // S1: the distinct item/part kinds seen, for samEmptyStatus diagnostics.
+  const kinds = new Set<string>();
   for (const item of out) {
     const it = item as { type?: unknown; content?: unknown };
-    if (it.type !== "message" || !Array.isArray(it.content)) continue;
+    const itemType = typeof it.type === "string" ? it.type : "unknown";
+    if (itemType !== "message" || !Array.isArray(it.content)) {
+      kinds.add(itemType);
+      continue;
+    }
     for (const part of it.content) {
       const pt = part as { type?: unknown; text?: unknown };
+      kinds.add(`message/${typeof pt.type === "string" ? pt.type : "unknown"}`);
       if (pt.type === "output_text" && typeof part.text === "string") parts.push(part.text as string);
     }
   }
-  return { ok: true, status: typeof p.status === "string" ? p.status : "unknown", text: parts.join("") };
+  return { ok: true, status: typeof p.status === "string" ? p.status : "unknown", text: parts.join(""), kinds: [...kinds] };
 }
 
 export function buildSamRequest(

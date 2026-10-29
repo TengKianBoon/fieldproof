@@ -13,7 +13,7 @@ import { buildSparkRequest, SPARK_ENDPOINT, SPARK_TIMEOUT_MS } from "../../share
 import { costOf, parseResponse, planningCapPerCall, toLabel, validReading, type Usage } from "../../shared/spikecost.ts";
 import {
   attachBox, attachSamStatus, buildSamRequest, detectImageMime, parseSamBoxes,
-  parseSamResponse, samConcept, SAM_ENDPOINT, SAM_PRICE_MILLICENTS,
+  parseSamResponse, samConcept, samEmptyStatus, SAM_ENDPOINT, SAM_PRICE_MILLICENTS,
   SAM_TIMEOUT_MS, type SamBox,
 } from "../../shared/samBoxes.ts";
 import { metaDiag } from "../../shared/agentDraft.ts";
@@ -263,7 +263,8 @@ async function samBoxForCapture(missionId: string, itemId: string, uploadId: str
         status = "sam:bad_response";
       } else {
         box = parseSamBoxes(pr.text);
-        status = box === null ? "none" : "box";
+        // S1: an empty result says which kind of empty it was.
+        status = box === null ? samEmptyStatus(pr.text, pr.kinds) : "box";
       }
     }
   } catch {
