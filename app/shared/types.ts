@@ -1,4 +1,5 @@
 // FieldProof shared types (lead-owned). Erasable-syntax TS only (runnable by Node 24).
+import type { CheckinRecord, PlannedSite } from "./checkin.ts";
 
 export type MissionState =
   | "draft" | "open" | "consented" | "capturing"
@@ -57,6 +58,10 @@ export interface Mission {
   // Job brief (optional): plain client guidance shown to both sides.
   // Never carries expected codes (enforced at create).
   brief?: JobBrief;
+  // L2 optional check-in reference (requester-set) and record. Precise
+  // coordinates stay server-side plus reviewer-only; shared views redact.
+  siteLocation?: PlannedSite;
+  checkin?: CheckinRecord;
 }
 
 export interface Result<T> {

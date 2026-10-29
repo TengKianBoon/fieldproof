@@ -5,7 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
-import { buildReport, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
+import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
@@ -89,6 +89,54 @@ function wrongCodeMsg(): string {
   return `Wrong access code (${n} character${n === 1 ? "" : "s"} entered)`;
 }
 
+// L2 requester copy for a rejected site reference; every form input keeps
+// its current value because failures never re-render the form.
+const LOC_MSG = "Check the site latitude (-90 to 90), longitude (-180 to 180), and radius (whole metres, 10 to 50000).";
+const CHECKIN_NOTE = "Device location at check-in. Not the photo capture location, and not proof of attendance.";
+
+// Coordinate-free check-in summary for client surfaces. Accepts the stored
+// record or the public view; latitude/longitude are never read here.
+interface CheckinView {
+  status: string;
+  distanceM: number | null;
+  accuracyM: number;
+  fixTime: string;
+  stale: boolean;
+  lowAccuracy: boolean;
+}
+
+function viewCheckin(v: unknown): CheckinView | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const f = (typeof o.fix === "object" && o.fix !== null ? o.fix : o) as Record<string, unknown>;
+  if (typeof f.status !== "string" || typeof f.fixTime !== "string") return null;
+  if (typeof f.accuracyM !== "number") return null;
+  return {
+    status: f.status,
+    distanceM: typeof f.distanceM === "number" ? f.distanceM : null,
+    accuracyM: f.accuracyM,
+    fixTime: f.fixTime,
+    stale: f.stale === true,
+    lowAccuracy: f.lowAccuracy === true,
+  };
+}
+
+function ageWords(fixMs: number, nowMs: number): string {
+  if (!Number.isFinite(fixMs)) return "unknown age";
+  const s = Math.max(0, Math.round((nowMs - fixMs) / 1000));
+  if (s < 60) return `${s} sec`;
+  const mm = Math.floor(s / 60);
+  if (mm < 60) return `${mm} min`;
+  return `${Math.floor(mm / 60)} hr ${mm % 60} min`;
+}
+
+function checkinCard(v: unknown): string {
+  const c = viewCheckin(v);
+  if (c === null) return "";
+  return `<div class="card" id="r-checkin"><p><strong>Check-in</strong> — ${esc(plainCheckin(c.status))}${c.distanceM === null ? "" : ` (${Math.round(c.distanceM)} m)`} · accuracy ±${Math.round(c.accuracyM)} m${c.stale ? " · stale" : ""}${c.lowAccuracy ? " · low accuracy" : ""}</p>`
+    + `<p class="muted">Fix ${esc(c.fixTime)} (${esc(ageWords(Date.parse(c.fixTime), Date.now()))} old).</p><p class="muted">${esc(CHECKIN_NOTE)}</p></div>`;
+}
+
 // Task 0b stale-item message: finished items refuse server-side; the worker
 // gets refresh guidance, never a raw error code.
 function staleItemMsg(m: string): string | null {
@@ -106,6 +154,9 @@ function viewNew(el: HTMLElement): void {
     <label>Job title (optional, at most 80 characters)<input id="f-title" type="text" maxlength="80" placeholder="Morning collection run" /></label><div id="f-title-err"></div>
     <label>Role (optional, at most 60 characters)<input id="f-role" type="text" maxlength="60" placeholder="Dock pickup" /></label><div id="f-role-err"></div>
     <label>Instructions for the field professional (optional, at most 600 characters)<textarea id="f-instructions" rows="3" maxlength="600" style="width:100%;box-sizing:border-box" placeholder="Call on arrival; photograph each label straight on"></textarea></label><div id="f-instructions-err"></div>
+    <label>Site latitude (optional, -90 to 90)<input id="f-lat" type="text" inputmode="decimal" placeholder="1.3521" /></label>
+    <label>Site longitude (optional, -180 to 180)<input id="f-lon" type="text" inputmode="decimal" placeholder="103.8198" /></label>
+    <label>Site radius in metres (optional, 10 to 50000)<input id="f-radius" type="text" inputmode="numeric" placeholder="150" /></label><div id="f-loc-err"></div>
     <label>Deadline<input id="f-dl" type="datetime-local" value="${dlDefault}" /></label>
     <p>Deadline time zone (required, choose one): <span id="f-tzrow"></span></p>
     <label>Access code<input id="f-code" type="password" autocomplete="off" /></label>
@@ -138,7 +189,7 @@ function viewNew(el: HTMLElement): void {
   // F1c: clears every brief inline error; stale messages never survive a
   // new attempt or a success.
   const clearBriefErrors = (): void => {
-    for (const id of ["f-title-err", "f-role-err", "f-instructions-err"]) {
+    for (const id of ["f-title-err", "f-role-err", "f-instructions-err", "f-loc-err"]) {
       const d = document.getElementById(id);
       if (d !== null) d.innerHTML = "";
     }
@@ -232,13 +283,23 @@ function viewNew(el: HTMLElement): void {
         role: (document.getElementById("f-role") as HTMLInputElement).value,
         instructions: (document.getElementById("f-instructions") as HTMLTextAreaElement).value,
       };
+      // L2: planned site reference, both coordinates or neither; the server
+      // validates ranges and the radius, and the form keeps every input.
+      const latRaw = (document.getElementById("f-lat") as HTMLInputElement).value.trim();
+      const lonRaw = (document.getElementById("f-lon") as HTMLInputElement).value.trim();
+      const radRaw = (document.getElementById("f-radius") as HTMLInputElement).value.trim();
+      const siteLocation = latRaw === "" && lonRaw === "" && radRaw === "" ? undefined : {
+        ...(latRaw === "" ? {} : { latitude: Number(latRaw) }),
+        ...(lonRaw === "" ? {} : { longitude: Number(lonRaw) }),
+        ...(radRaw === "" ? {} : { radiusM: Number(radRaw) }),
+      };
       const dlRaw = (document.getElementById("f-dl") as HTMLInputElement).value;
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dlRaw)) throw new Error("bad_deadline");
       // Task 0: the raw wall time plus the explicit zone choice go to the
       // server, which does the real wall-to-instant conversion.
       const tz = selectedTz();
       if (tz === null) throw new Error("need_timezone");
-      const c = await calls.createMission(site, codes, dlRaw.slice(0, 16), undefined, codeHeaders(), tz, brief, hints) as { missionId: string; workerToken: string; reviewToken: string };
+      const c = await calls.createMission(site, codes, dlRaw.slice(0, 16), undefined, codeHeaders(), tz, brief, hints, siteLocation) as { missionId: string; workerToken: string; reviewToken: string };
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
       out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(shortId(c.missionId))} open.</p>
@@ -283,7 +344,12 @@ function viewNew(el: HTMLElement): void {
         : (m.includes("need_timezone") || m.includes("timezone_required")) ? "Choose a time zone for the deadline."
         : m.includes("bad_zone") ? "That time zone is not supported — pick device or UTC."
         : m.includes("brief_leaks_code") ? BRIEF_LEAK_MESSAGE
+        : (m.includes("bad_location") || m.includes("bad_radius")) ? LOC_MSG
         : m;
+      if (m.includes("bad_location") || m.includes("bad_radius")) {
+        const locSlot = document.getElementById("f-loc-err");
+        if (locSlot !== null) locSlot.innerHTML = `<p class="err">${esc(LOC_MSG)}</p>`;
+      }
       out.innerHTML = `<p class="err">${esc(friendly)}</p>`;
       goBtn.disabled = false;
     }
@@ -426,7 +492,7 @@ let workIndex = 0;
 
 async function viewWork(el: HTMLElement, missionId: string, token: string): Promise<void> {
   const s = await calls.state(missionId, token) as {
-    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[] };
+    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[]; planned?: boolean; checkin?: { status: string; distanceM: number | null; accuracyM: number; accuracyBand: string; fixTime: string; stale: boolean; attempts: number } | null };
   };
   const m = s.mission;
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
@@ -503,6 +569,10 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>`}
       <div data-msg="${esc(cur.itemId)}"></div></div>`;
   const allDone = m.items.every((it) => it.state === "received");
+  const attemptsUsed = m.checkin?.attempts ?? 0;
+  const checkinLine = m.checkin == null
+    ? `<p class="muted">No fix shared yet.</p>`
+    : `<p>Check-in: ${esc(plainCheckin(m.checkin.status))}${m.checkin.distanceM === null ? "" : ` (${Math.round(m.checkin.distanceM)} m)`} · accuracy ${esc(m.checkin.accuracyBand)}${m.checkin.stale ? " · stale" : ""}</p>`;
   const received = doneCount(m.items);
   const remaining = m.items.length - received;
   const briefCard = m.brief == null ? ""
@@ -511,7 +581,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
       + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
     }</div>`;
-  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p>${briefCard}<div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
+  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p>${briefCard}<div class="card" id="w-checkin"><p><strong>Check-in (optional)</strong></p><p class="muted">Share a one-time device fix so the client sees one location, accuracy and time. Photos count without it.</p>${checkinLine}<p class="muted">Check-in ${attemptsUsed} of 5 used.</p><button id="w-cgo">Share location for this mission</button><div id="w-cmsg"></div></div><div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
     <div class="row"><button id="w-prev"${k === 0 ? " disabled" : ""}>Previous</button><button id="w-next"${k === m.items.length - 1 ? " disabled" : ""}>Next</button></div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
   const savePos = (n: number): void => {
@@ -531,6 +601,46 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     savePos(workIndex);
     void render();
   };
+  const cgo = document.getElementById("w-cgo") as HTMLButtonElement | null;
+  if (cgo !== null) {
+    // L2: one-shot browser fix only on explicit tap - never on load. A
+    // denied or failed read saves nothing and keeps any earlier fix.
+    cgo.onclick = () => {
+      const cmsg = document.getElementById("w-cmsg") as HTMLElement;
+      if (cgo.disabled) return;
+      if (!("geolocation" in navigator)) {
+        cmsg.innerHTML = `<p class="err">This device cannot share a location - photos still count.</p>`;
+        return;
+      }
+      cgo.disabled = true;
+      cmsg.innerHTML = `<p class="muted">Reading device location...</p>`;
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          const r = await calls.checkin(missionId, token, {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyM: pos.coords.accuracy,
+            fixTime: new Date(pos.timestamp).toISOString(),
+          }) as { checkin: { status: string } | null };
+          flash = r.checkin === null ? "Check-in recorded." : `Check-in recorded: ${plainCheckin(r.checkin.status)}.`;
+          await render();
+        } catch (e) {
+          const cm = e instanceof Error ? e.message : String(e);
+          cmsg.innerHTML = cm.includes("checkin_exhausted")
+            ? `<p class="err">No check-ins left on this mission (5 used) - photos still count.</p>`
+            : errBox(e);
+        } finally {
+          cgo.disabled = false;
+        }
+      }, (err) => {
+        const why = err.code === err.PERMISSION_DENIED ? "Location denied in the browser - no fix was saved, and an earlier fix stays."
+          : err.code === err.TIMEOUT ? "Location timed out - no fix was saved, and an earlier fix stays."
+          : "Location unavailable - no fix was saved, and an earlier fix stays.";
+        cmsg.innerHTML = `<p class="err">${esc(why)} Photos still count.</p>`;
+        cgo.disabled = false;
+      }, { timeout: 15000, maximumAge: 60000 });
+    };
+  }
   // Finished items render no controls, so there is nothing to wire.
   for (const it of finished ? [] : [cur]) {
     const btn = el.querySelector(`[data-shoot="${it.itemId}"]`) as HTMLButtonElement;
@@ -624,12 +734,13 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       }>;
       reviewerDecision: Record<string, string>;
       brief?: { title?: string; role?: string; instructions?: string } | null;
+      checkin?: unknown;
     };
   };
   const m = s.mission;
   if (m.state !== "in_review" && m.state !== "decided") {
     const photos = m.expected.filter((e) => m.observed[e.itemId]?.uploadId).length;
-    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for the field professional — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
+    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for the field professional — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>${checkinCard(m.checkin)}`;
     (document.getElementById("r-refresh") as HTMLButtonElement).onclick = () => void render();
     return;
   }
@@ -653,7 +764,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
       + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
     }</div>`;
-  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${reviewSummary}
+  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${checkinCard(m.checkin)}${reviewSummary}
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>

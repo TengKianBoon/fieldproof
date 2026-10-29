@@ -184,6 +184,7 @@ export const calls = {
     siteLabel: string, labels: string[], deadline: string, fetchFn?: FetchFn,
     headers?: Record<string, string>, timezone?: string, brief?: BriefInput,
     photoHints?: Array<string | undefined>,
+    siteLocation?: { latitude?: number; longitude?: number; radiusM?: number },
   ) => {
     const clean = (v: string | undefined): string | undefined => {
       if (v === undefined) return undefined;
@@ -212,6 +213,7 @@ export const calls = {
       deadline,
       ...(timezone === undefined ? {} : { timezone }),
       ...(Object.keys(briefOut).length === 0 ? {} : { brief: briefOut }),
+      ...(siteLocation === undefined ? {} : { siteLocation }),
     }, fetchFn, headers);
   },
   consent: (missionId: string, token: string, workerId: string, fetchFn?: FetchFn) =>
@@ -226,6 +228,12 @@ export const calls = {
     }, fetchFn, headers),
   capture: (missionId: string, token: string, itemId: string, uploadId: string, fetchFn?: FetchFn) =>
     post("capture-submit", { missionId, token, itemId, uploadId }, fetchFn),
+  // L2: one optional device fix; the server answers without coordinates.
+  checkin: (
+    missionId: string, token: string,
+    fix: { latitude: number; longitude: number; accuracyM: number; fixTime: string },
+    fetchFn?: FetchFn,
+  ) => post("location-checkin", { missionId, token, ...fix }, fetchFn),
   closeup: (missionId: string, token: string, itemId: string, fetchFn?: FetchFn) =>
     post("closeup-request", { missionId, token, itemId }, fetchFn),
   inconclusive: (missionId: string, token: string, itemId: string, fetchFn?: FetchFn) =>

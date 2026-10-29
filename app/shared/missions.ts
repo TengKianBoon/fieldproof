@@ -9,6 +9,7 @@
 // B8: mission ids are crypto-random (no timestamps or counters).
 import { randomUUID } from "node:crypto";
 import { ok, fail, type Result, type Mission, type ExpectedItem, type Readability } from "./types.ts";
+import { CHECKIN_MAX_ATTEMPTS, classifyFix, publicCheckin, type CheckinFix, type FixInput, type PlannedSite } from "./checkin.ts";
 import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
 import { summarizeReview } from "./reviewSummary.ts";
@@ -92,6 +93,7 @@ export class Missions {
     followup?: { parentId: string; parentItemIds: string[] },
     missionId?: string,
     brief?: JobBrief,
+    siteLocation?: PlannedSite,
   ): Result<Mission> {
     if (expected.length < MIN_ITEMS || expected.length > MAX_ITEMS) return fail("bad_item_count");
     for (const e of expected) {
@@ -117,6 +119,9 @@ export class Missions {
     }
     if (brief !== undefined) {
       m.brief = brief;
+    }
+    if (siteLocation !== undefined) {
+      m.siteLocation = siteLocation;
     }
     for (const e of expected) {
       m.observed[e.itemId] = {
@@ -181,6 +186,23 @@ export class Missions {
       transitionItem("observed_clear", c.value === "matched" ? "matched" : "mismatched");
       o.state = c.value === "matched" ? "matched" : "mismatched";
     }
+    return this.commit(m, v);
+  }
+
+  // L2: one worker check-in record per call (at most five per mission).
+  // Only a valid record consumes an attempt and overwrites the single
+  // visible fix - rejected payloads leave any prior fix untouched, and a
+  // location outcome never changes item or mission state.
+  recordCheckin(missionId: string, input: FixInput): Result<Mission> {
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
+    if (m.state !== "capturing" && m.state !== "consented") return fail("not_capturing");
+    const attempts = m.checkin?.attempts ?? 0;
+    if (attempts >= CHECKIN_MAX_ATTEMPTS) return fail("checkin_exhausted");
+    const c = classifyFix(input, Date.now(), m.siteLocation);
+    if (!c.ok) return fail(c.error as string);
+    m.checkin = { attempts: attempts + 1, fix: c.value as CheckinFix };
     return this.commit(m, v);
   }
 
@@ -270,7 +292,14 @@ export class Missions {
     if (m.state !== "decided") return fail("not_decided");
     // Stage 2a: the same deterministic two-axis summary rides in the pack,
     // derived from the stored mission without changing evidence or state.
-    const pack = JSON.stringify({ mission: m, summary: summarizeReview(m), exportedAt: new Date().toISOString() });
+    // L2: the default pack carries the check-in summary only - precise
+    // coordinates never ride the export.
+    const packMission = {
+      ...m,
+      siteLocation: m.siteLocation === undefined ? undefined : { radiusM: m.siteLocation.radiusM },
+      checkin: m.checkin === undefined ? undefined : { attempts: m.checkin.attempts, fix: publicCheckin(m.checkin.fix, m.checkin.attempts) },
+    };
+    const pack = JSON.stringify({ mission: packMission, summary: summarizeReview(m), exportedAt: new Date().toISOString() });
     const bytes = Buffer.byteLength(pack, "utf8");
     if (bytes > maxBytes) return fail("export_too_large");
     return ok({ pack, bytes });

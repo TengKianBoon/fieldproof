@@ -8,6 +8,7 @@ import { mintLink } from "../../shared/links.ts";
 import { requesterIdentity } from "../../shared/identity.ts";
 import { hasZoneSuffix, parseAbsolute, resolveInstant } from "../../shared/timezone.ts";
 import { boxId, CODE_RE, MAX_ITEMS, MIN_ITEMS } from "../../shared/missions.ts";
+import { parsePlannedSite } from "../../shared/checkin.ts";
 import type { ExpectedItem, JobBrief } from "../../shared/types.ts";
 
 // Optional job-brief limits (trimmed lengths).
@@ -101,6 +102,10 @@ export default async function handler(req: Request): Promise<Response> {
     expectedLabel,
     ...(hintByIndex.has(i) ? { photoHint: hintByIndex.get(i) as string } : {}),
   }));
+  // L2 optional site reference: latitude/longitude both or neither, radius
+  // an integer 10-50000 m. Invalid values are rejected, never clamped.
+  const site = parsePlannedSite((body as Record<string, unknown>).siteLocation);
+  if (!site.ok) return json(400, { error: site.error });
   // Task 0: an explicit timezone choice drives a real server-side
   // wall-to-instant conversion. Absent means the legacy path (the deadline
   // is stored exactly as sent); a wall time WITH a zone is converted, and
@@ -124,7 +129,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const created = await blobsScope(null, {}, () => {
     const { missions } = ctx();
-    return missions.create(siteLabel, expectedItems, deadline, undefined, undefined, brief);
+    return missions.create(siteLabel, expectedItems, deadline, undefined, undefined, brief, site.value as import("../../shared/checkin.ts").PlannedSite | undefined);
   }).catch((e: unknown) => {
     if (e instanceof Error && e.message === "store_conflict") return { ok: false as const, error: "store_conflict" };
     throw e;

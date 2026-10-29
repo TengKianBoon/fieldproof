@@ -7,6 +7,7 @@
 import { ctx, json, secret, isRevoked } from "./_ctx.mts";
 import { verifyLink } from "../../shared/links.ts";
 import { workerItemState } from "../../shared/missions.ts";
+import { publicCheckin } from "../../shared/checkin.ts";
 import type { Mission } from "../../shared/types.ts";
 
 export const EXPORT_MAX_BYTES = 4 * 1024 * 1024;
@@ -50,6 +51,8 @@ export async function stateHandler(req: Request): Promise<Response> {
       deadline: m.deadline,
       state: m.state,
       brief: m.brief ?? null,
+      planned: m.siteLocation !== undefined,
+      checkin: publicCheckin(m.checkin?.fix ?? null, m.checkin?.attempts ?? 0),
       items: m.expected.map((e) => ({
         itemId: e.itemId,
         state: workerItemState((m as Mission).observed[e.itemId].state),
@@ -57,6 +60,16 @@ export async function stateHandler(req: Request): Promise<Response> {
       })),
     };
     return json(200, { mission: brief, viewerRole: role });
+  }
+  if (role === "requester") {
+    // L2: the client sees the check-in summary only - precise coordinates
+    // stay reviewer-side.
+    const redacted = {
+      ...m,
+      siteLocation: m.siteLocation === undefined ? undefined : { radiusM: m.siteLocation.radiusM },
+      checkin: m.checkin === undefined ? undefined : { attempts: m.checkin.attempts, fix: publicCheckin(m.checkin.fix, m.checkin.attempts) },
+    };
+    return json(200, { mission: redacted, viewerRole: role });
   }
   return json(200, { mission: m, viewerRole: role });
 }

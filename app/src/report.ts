@@ -33,6 +33,8 @@ export interface ReportMission {
   followUpOf?: string;
   parentItemIds?: string[];
   brief?: { title?: string; role?: string; instructions?: string } | null;
+  // L2: stored record or public view - the summary below never picks coords.
+  checkin?: unknown;
 }
 
 export interface ReportItem {
@@ -64,6 +66,7 @@ export interface ReportData {
   followUpOf: string | null;
   parentItemIds: string[];
   brief: { title: string | null; role: string | null; instructions: string | null } | null;
+  checkin: { status: string; distanceM: number | null; band: string; stale: boolean } | null;
 }
 
 function resc(s: string): string {
@@ -89,6 +92,15 @@ export function plainWorkerItem(state: string): string {
   if (state === "received") return "Photo received";
   if (state === "retake") return "Retake photo";
   return "Waiting for photo";
+}
+
+// Check-in words for display only; gates compare raw codes.
+export function plainCheckin(status: string): string {
+  if (status === "within") return "At the site";
+  if (status === "outside") return "Outside the site area";
+  if (status === "inconclusive") return "Unclear area";
+  if (status === "unverified") return "Unverified";
+  return status;
 }
 
 // Plain-word item/decision labels for display only; gates compare raw codes.
@@ -134,6 +146,23 @@ export function fmtDateTime(iso: string | undefined, timeZone = "UTC"): string {
     local = new Intl.DateTimeFormat("en-GB", { ...fields, timeZone: "UTC" }).format(d);
   }
   return `${local} (recorded ${iso})`;
+}
+
+// L2: coordinate-free check-in summary for the default report surface.
+// Accepts the stored record or the public view; precise coordinates are
+// never picked, whatever the caller was authorized to see.
+export function summarizeCheckin(v: unknown): { status: string; distanceM: number | null; band: string; stale: boolean } | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const f = (typeof o.fix === "object" && o.fix !== null ? o.fix : o) as Record<string, unknown>;
+  if (typeof f.status !== "string") return null;
+  const low = f.lowAccuracy === true || f.accuracyBand === "low";
+  return {
+    status: resc(plainCheckin(f.status)),
+    distanceM: typeof f.distanceM === "number" ? f.distanceM : null,
+    band: low ? "low" : "ok",
+    stale: f.stale === true,
+  };
 }
 
 export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
@@ -200,6 +229,7 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
     inconclusive,
     summary: summarizeReview(m),
     followUpOf: typeof m.followUpOf === "string" ? resc(m.followUpOf) : null,
+    checkin: summarizeCheckin(m.checkin),
     parentItemIds: Array.isArray(m.parentItemIds)
       ? m.parentItemIds.filter((i): i is string => typeof i === "string").map((i) => resc(i))
       : [],
@@ -252,6 +282,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p>Summary: ${resc(summaryCompact(data.summary))}</p>`
     + (data.brief === null ? "" : `<p>Brief: ${[data.brief.title, data.brief.role, data.brief.instructions].filter((x): x is string => x !== null).join(" · ")}</p>`)
+    + (data.checkin === null ? "" : `<p>Check-in: ${data.checkin.status}${data.checkin.distanceM === null ? "" : ` (${Math.round(data.checkin.distanceM)} m)`} · accuracy ${data.checkin.band}${data.checkin.stale ? " · stale" : ""}</p><p class="muted">Device location at check-in. Not the photo capture location, and not proof of attendance.</p>`)
     + (data.followUpOf === null ? "" : `<p>Follow-up of mission ${data.followUpOf} — parent items: ${data.parentItemIds.join(", ")}</p>`)
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
     + group("Awaiting reviewer decision", data.unresolved)
