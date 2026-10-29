@@ -61,7 +61,9 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
   if (!link.ok || link.value === undefined) return json(403, { error: "denied" });
   if (link.value.role === "worker") return json(403, { error: "denied" });
   if (link.value.role !== "reviewer") return json(403, { error: "review_link_required" });
-  const m = ctx().missions.load(missionId);
+  // A1b-fix: production (Blobs) mode only sees store keys inside a scope, so
+  // the mission is read in a read-only phase-0 scope (nothing is committed).
+  const m = await blobsScope(missionId, {}, () => ctx().missions.load(missionId));
   if (m === null) return json(404, { error: "unknown_mission" });
   if (m.state !== "in_review" && m.state !== "decided") return json(409, { error: "not_ready" });
   const key = process.env.META_API_KEY;
@@ -71,6 +73,9 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
   const fingerprint = briefFingerprint(m);
   const cacheKey = briefCacheKey(missionId, fingerprint);
   const reqExtra = `briefreq:${missionId}:${requestId}`;
+  // A1b-fix: one captured UTC day; its shared cap key is preloaded in phase 1.
+  const day = utcDay();
+  const capKey = `briefcap:${missionId}:${day}`;
   const max = Math.round(planningCapPerCall() * 100_000);
   const nowLease = (): number => Date.now() + BRIEF_LEASE_MS;
 
@@ -78,10 +83,14 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
   // Exactly one ledger reserve per real attempt; cache hits touch nothing.
   let ticket: { ledgerKey: string; mineRaw: string; day: string };
   try {
-    const p1 = await blobsScope(missionId, { extraKeys: [cacheKey, reqExtra] }, (): Outcome | { kind: "run"; ticket: typeof ticket } => {
+    const p1 = await blobsScope(missionId, { extraKeys: [cacheKey, reqExtra, capKey] }, (): Outcome | { kind: "run"; ticket: typeof ticket } => {
       const st = store();
       const prior = readBriefReq(st, missionId, requestId);
       if (prior !== null) return doneReq(prior);
+      // A1b-fix: the input must not have changed since phase 0.
+      const cur = ctx().missions.load(missionId);
+      if (cur === null) return { kind: "fail", status: 404, error: "unknown_mission" };
+      if (briefFingerprint(cur) !== fingerprint) return { kind: "fail", status: 409, error: "brief_input_changed" };
       try {
         const hit = JSON.parse(st.get(cacheKey) ?? "null") as unknown;
         if (isCachedBrief(hit) && hit.fingerprint === fingerprint) {
@@ -130,7 +139,6 @@ export async function reviewBriefHandler(req: Request, fetchFn: typeof fetch = f
         });
         return { kind: "fail", status: 402, error: e };
       }
-      const day = utcDay();
       const cap = reserveBriefCap(st, missionId, day, ledgerKey);
       if (!cap.ok) {
         ctx().ledger.release(BRIEF_CALLER, missionId, ledgerKey);
