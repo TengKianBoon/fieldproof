@@ -118,14 +118,14 @@ export function locationSectionHtml(g: GeoView, forPrint: boolean): string | nul
   if (g.fix === null && g.site === null) return null;
   const rows: string[] = [];
   if (g.fix !== null) {
-    rows.push(`<p>Check-in coordinates: ${fmtCoord(g.fix.lat, g.fix.lon)} (accuracy ±${Math.round(g.fix.accuracyM)} m) · <a href="${googleMapsUrl(g.fix.lat, g.fix.lon)}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a></p>`);
+    rows.push(`<p>Check-in coordinates: ${fmtCoord(g.fix.lat, g.fix.lon)} (accuracy ±${Math.round(g.fix.accuracyM)} m) · <a href="${googleMapsUrl(g.fix.lat, g.fix.lon)}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a> <span class="muted">(google.com)</span></p>`);
   }
   if (g.site !== null) {
     rows.push(`<p class="muted">Planned site: ${fmtCoord(g.site.lat, g.site.lon)}, radius ${Math.round(g.site.radiusM)} m · <a href="${googleMapsUrl(g.site.lat, g.site.lon)}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a></p>`);
   }
   const svg = siteDiagramSvg(g);
   return `<div class="geo">${rows.join("")}${svg ?? ""}`
-    + (forPrint || g.fix === null ? "" : `<p><button id="r-map" type="button">Show on map</button></p><div id="r-mapbox"></div>`)
+    + (forPrint || g.fix === null ? "" : `<p><button id="r-map" type="button">Show on OpenStreetMap</button> <span class="muted">Loads a map from openstreetmap.org, which receives these coordinates.</span></p><div id="r-mapbox"></div>`)
     + `<p class="muted">The device's location when the field professional checked in, shared with their consent. Not the photo capture location.</p></div>`;
 }
 
