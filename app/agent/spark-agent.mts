@@ -40,11 +40,11 @@ export function newAgentState(): AgentState {
   return { input: [], calls: 0 };
 }
 
-export function sparkTools(): Json[] {
-  return TOOLS.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.inputSchema, strict: false }));
+export function sparkTools(tools: typeof TOOLS = TOOLS): Json[] {
+  return tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.inputSchema, strict: false }));
 }
 
-export function buildTurnRequest(input: Json[]): Json {
+export function buildTurnRequest(input: Json[], tools: typeof TOOLS = TOOLS): Json {
   return {
     model: AGENT_MODEL,
     store: false,
@@ -54,7 +54,7 @@ export function buildTurnRequest(input: Json[]): Json {
     instructions: GUIDANCE,
     include: ["reasoning.encrypted_content"],
     input,
-    tools: sparkTools(),
+    tools: sparkTools(tools),
   };
 }
 
@@ -113,7 +113,7 @@ export async function runTurn(state: AgentState, userText: string, deps: AgentDe
         method: "POST",
         signal: AbortSignal.timeout(120_000),
         headers: { "content-type": "application/json", authorization: `Bearer ${deps.key}` },
-        body: JSON.stringify(buildTurnRequest(state.input)),
+        body: JSON.stringify(buildTurnRequest(state.input, deps.server.tools)),
       });
       raw = await res.text();
     } catch {
@@ -165,7 +165,8 @@ async function main(): Promise<void> {
     process.stderr.write("spark-agent: set FIELDPROOF_URL (https), FIELDPROOF_ACCESS_CODE and META_API_KEY first.\n");
     process.exit(1);
   }
-  const server = createFieldProofServer({ baseUrl: url, accessCode: process.env.FIELDPROOF_ACCESS_CODE ?? "" });
+  // J3: with FIELDPROOF_JOBS=on the agent can also draft jobs and follow them.
+  const server = createFieldProofServer({ baseUrl: url, accessCode: process.env.FIELDPROOF_ACCESS_CODE ?? "", jobs: process.env.FIELDPROOF_JOBS === "on" });
   const state = newAgentState();
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   process.stdout.write("FieldProof agent (Meta Muse Spark). Ask for a field check, its status, or its evidence. Empty line to quit.\n");

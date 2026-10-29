@@ -23,6 +23,8 @@ export interface AgentConfig {
   baseUrl: string;
   accessCode: string;
   fetchFn?: typeof fetch;
+  // J3: Jobs and bids tools, only when the site runs Jobs (FIELDPROOF_JOBS=on).
+  jobs?: boolean;
 }
 
 export interface ToolResult {
@@ -98,6 +100,59 @@ export const TOOLS = [
   },
 ];
 
+// J3: Jobs and bids. The agent can draft a job and follow its status. It can
+// never publish, invite, select or accept: the server gives this MCP server a
+// read-only agent link, the owner link is never requested, and a person
+// claims the job on the website with the access code.
+export const JOB_TOOLS = [
+  {
+    name: "post_field_job",
+    title: "Draft a field job",
+    description:
+      "Draft a field job with a budget for field professionals to bid on. It stays a DRAFT until a person opens the claim link, " +
+      "enters the access code, reviews it and publishes it; the person then invites professionals and chooses one. Each accepted job " +
+      "becomes a FieldProof field check. Never put the expected codes in any text: invited professionals see the text, never the codes.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["title", "outcome", "region", "window_start", "window_end", "budget_min", "budget_max", "currency", "bid_deadline", "site", "items", "check_deadline"],
+      properties: {
+        title: { type: "string", description: "Short job title, e.g. 'Sample-bag tag check'." },
+        outcome: { type: "string", description: "What the field professional must achieve." },
+        deliverables: { type: "string", description: "Optional deliverables." },
+        region: { type: "string", description: "Broad region only, e.g. 'Riau, Sumatra' (no exact address)." },
+        window_start: { type: "string", description: "First work day, YYYY-MM-DD." },
+        window_end: { type: "string", description: "Last work day, YYYY-MM-DD." },
+        budget_min: { type: "number", description: "Lowest budget." },
+        budget_max: { type: "number", description: "Highest budget." },
+        currency: { type: "string", description: "ISO currency code, e.g. USD, SGD or IDR." },
+        skills: { type: "array", items: { type: "string" }, description: "Optional skills, up to 8." },
+        safety_notes: { type: "string", description: "Optional safety or site-permission notes." },
+        bid_deadline: { type: "string", description: "Absolute ISO time with an offset, e.g. 2026-11-05T18:00:00+08:00." },
+        site: { type: "string", description: "Site label for the field check, e.g. 'Sample store A'." },
+        items: { type: "array", minItems: 1, maxItems: 10, items: { type: "string" }, description: "Expected tag codes, 1-20 letters or digits each." },
+        photo_tips: { type: "array", items: { type: "string" }, description: "Optional photo tip per item, same order ('' for none)." },
+        check_deadline: { type: "string", description: "When the field check is due: absolute ISO time with an offset." },
+      },
+    },
+  },
+  {
+    name: "get_job_status",
+    title: "Field job status",
+    description: "Status of a job drafted in this session: its state, how many professionals were invited and have bid, whether a choice is pending, and whether one accepted (then its field check id). No names, prices or contacts.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["job_id"],
+      properties: { job_id: { type: "string", description: "The jobId returned by post_field_job." } },
+    },
+  },
+];
+
+export function toolsFor(cfg: { jobs?: boolean }): typeof TOOLS {
+  return cfg.jobs === true ? [...TOOLS, ...(JOB_TOOLS as unknown as typeof TOOLS)] : TOOLS;
+}
+
 // The base URL must be https, or plain http only for a local dev server,
 // so the access code is never sent in clear text to a remote host.
 export function checkBaseUrl(raw: string): { ok: true; base: string } | { ok: false; error: string } {
@@ -127,6 +182,16 @@ const ERRORS: Record<string, string> = {
   denied: "The link for this check has expired or was refused (links last about 24 hours).",
   store_conflict: "FieldProof was busy. Try again in a moment.",
   idempotency_conflict: "A different check was already requested with this request key. Change the details or start a new session.",
+  jobs_disabled: "Jobs and bids is not switched on for this FieldProof site.",
+  job_leaks_code: "A job text mentions an expected code. Remove it: invited professionals must never see the expected codes.",
+  contact_details_not_allowed: "Remove phone numbers, e-mail addresses and links: contact details are shared only after a professional accepts.",
+  bad_window: "The work window must start on or before its last day (YYYY-MM-DD).",
+  bad_money: "Budgets must be numbers, with the minimum not above the maximum.",
+  bad_currency: "Use a three-letter currency code such as USD, SGD or IDR.",
+  bad_date: "Dates must be YYYY-MM-DD.",
+  missing_field: "A required field is empty.",
+  text_too_long: "One of the texts is too long.",
+  not_found: "FieldProof does not know this job.",
 };
 
 function fail(text: string): ToolResult {
@@ -202,6 +267,9 @@ export function createFieldProofServer(cfg: AgentConfig) {
   const fetchFn = cfg.fetchFn ?? fetch;
   // missionId -> requester token. Memory only: never written to disk.
   const sessions = new Map<string, string>();
+  // J3: jobId -> read-only agent link. Memory only; the owner link is never kept.
+  const jobSessions = new Map<string, string>();
+  const tools = toolsFor(cfg);
   // Idempotent create: a retry of the same request in this session (for
   // example after a timeout) returns the same check on the server.
   const sessionNonce = randomUUID().slice(0, 8);
@@ -331,6 +399,59 @@ export function createFieldProofServer(cfg: AgentConfig) {
     };
   }
 
+  async function postJob(a: Json): Promise<ToolResult> {
+    const items = Array.isArray(a.items) ? a.items : [];
+    const tips = Array.isArray(a.photo_tips) ? a.photo_tips : [];
+    const body: Json = {
+      title: a.title, outcome: a.outcome, deliverables: a.deliverables, region: a.region,
+      windowStart: a.window_start, windowEnd: a.window_end,
+      budget: { min: a.budget_min, max: a.budget_max, currency: typeof a.currency === "string" ? a.currency.toUpperCase() : a.currency },
+      skills: a.skills, safetyNotes: a.safety_notes, bidDeadline: a.bid_deadline, siteLabel: a.site,
+      items: items.map((c, i) => {
+        const tip = str(tips[i]);
+        return { expectedLabel: typeof c === "string" ? c.trim().toUpperCase() : c, ...(tip === null ? {} : { photoHint: tip }) };
+      }),
+      checkDeadline: a.check_deadline, createdBy: "agent",
+    };
+    body.idempotencyKey = `mcp-job:${sessionNonce}:${createHash("sha256").update(JSON.stringify(body)).digest("hex").slice(0, 40)}`;
+    const r = await call("job-create", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-requester-code": cfg.accessCode },
+      body: JSON.stringify(body),
+    });
+    if (r.status !== 200 || r.body === null) return explain(r.status, r.body);
+    const jobId = String(r.body.jobId);
+    jobSessions.set(jobId, String(r.body.agentToken));
+    const claimLink = `${base}#/jobs/claim/${jobId}`;
+    const text = [
+      `Draft job ${jobId} saved. It is not visible to anyone yet.`,
+      `Ask the client to open ${claimLink} and enter their access code to review and publish it, then invite professionals and choose one.`,
+      "You cannot publish, invite, choose or accept. Follow progress with get_job_status.",
+    ].join("\n");
+    return {
+      content: [{ type: "text", text }],
+      structuredContent: { jobId, status: "draft", claimLink, notice: "A person publishes, invites and chooses. You can only follow the status." },
+    };
+  }
+
+  async function jobStatus(a: Json): Promise<ToolResult> {
+    const id = str(a.job_id);
+    if (id === null) return fail("job_id is required.");
+    const token = jobSessions.get(id);
+    if (token === undefined) return fail("This session can only follow jobs it drafted.");
+    const r = await call("job-status", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id, token }) });
+    if (r.status !== 200 || r.body === null) return explain(r.status, r.body);
+    const st = r.body.status as Json;
+    const state = String(st.status);
+    const plain: Record<string, string> = { draft: "Draft: waiting for a person to publish it", open: "Open for bids", accepted: "A professional accepted", cancelled: "Cancelled" };
+    const lines = [
+      `Job ${id} (${String(st.title)}): ${plain[state] ?? state}.`,
+      `Invited: ${String(st.invited)} · bids received: ${String(st.submitted)}${st.selectionPending === true ? " · a choice is waiting for the professional to accept" : ""}.`,
+      st.engaged === true ? `Accepted: field check ${String(st.missionId)} was created. A person decides every item.` : "",
+    ].filter((x) => x !== "");
+    return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: st };
+  }
+
   async function callTool(name: string, args: unknown): Promise<ToolResult> {
     if (!checked.ok) return fail(checked.error);
     const a = (typeof args === "object" && args !== null && !Array.isArray(args) ? args : {}) as Json;
@@ -338,6 +459,8 @@ export function createFieldProofServer(cfg: AgentConfig) {
       if (name === "create_field_check") return await createCheck(a);
       if (name === "get_field_check_status") return await status(a);
       if (name === "get_evidence_pack") return await evidence(a);
+      if (cfg.jobs === true && name === "post_field_job") return await postJob(a);
+      if (cfg.jobs === true && name === "get_job_status") return await jobStatus(a);
       return fail(`Unknown tool: ${name}`);
     } catch {
       return fail("FieldProof could not be reached. Check FIELDPROOF_URL and try again.");
@@ -362,10 +485,10 @@ export function createFieldProofServer(cfg: AgentConfig) {
       case "ping":
         return ok({});
       case "tools/list":
-        return ok({ tools: TOOLS });
+        return ok({ tools });
       case "tools/call": {
         const name = typeof params.name === "string" ? params.name : "";
-        if (!TOOLS.some((t) => t.name === name)) return rpcError(m.id, -32602, `Unknown tool: ${name}`);
+        if (!tools.some((t) => t.name === name)) return rpcError(m.id, -32602, `Unknown tool: ${name}`);
         return ok((await callTool(name, params.arguments)) as unknown as Json);
       }
       default:
@@ -373,7 +496,7 @@ export function createFieldProofServer(cfg: AgentConfig) {
     }
   }
 
-  return { handle, callTool, sessions };
+  return { handle, callTool, sessions, jobSessions, tools };
 }
 
 export type FieldProofServer = ReturnType<typeof createFieldProofServer>;
@@ -409,7 +532,7 @@ function main(): void {
   }
   const code = process.env.FIELDPROOF_ACCESS_CODE ?? "";
   if (code === "") process.stderr.write("fieldproof-mcp: FIELDPROOF_ACCESS_CODE is not set; creating checks will be refused.\n");
-  const server = createFieldProofServer({ baseUrl: url, accessCode: code });
+  const server = createFieldProofServer({ baseUrl: url, accessCode: code, jobs: process.env.FIELDPROOF_JOBS === "on" });
   const rl = createInterface({ input: process.stdin });
   let chain = Promise.resolve();
   rl.on("line", (line) => {

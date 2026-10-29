@@ -117,6 +117,18 @@ Add it to any MCP client that runs local (stdio) servers, with Node 24:
 
 **Meta's Muse Spark as the agent:** with `META_API_KEY` also set, `node app/agent/spark-agent.mts` starts a short chat in which Muse Spark calls the same three tools. Ask for a check in plain words, then ask for its status or evidence later in the same session. The script shows you the links directly, so Muse Spark never holds a link's access token. It makes at most 12 model calls per session.
 
+## Jobs and bids (pilot, behind a switch)
+
+"Hire a human" for field evidence, end to end. With `JOBS_ENABLED=on`:
+
+1. **A client, or their AI agent, drafts a job:** outcome, broad region, dates, a **budget range**, and the items to evidence. An agent's job stays a draft until a person claims it with the access code and publishes it.
+2. **The client invites professionals by private links,** one per person. Each professional sees the job (never the expected codes) and only their own bid.
+3. **Professionals bid:** price, dates, method, exclusions and what they can do. Phone numbers, e-mails and links are kept out until a professional accepts.
+4. **A person selects one bid, and the professional accepts.** Exactly one FieldProof check is created for that job, even if both click at once, and the professional gets the field link.
+5. **The accepted engagement is recorded** (who, scope, value, date). There are no payments in the app; a success fee would be invoiced separately. The fee shown is an example, not yet live.
+
+**For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). The MCP server holds a read-only job link; it never receives the link that publishes or selects, so an agent cannot publish, invite, choose or accept.
+
 ## Built during the Hackathon
 
 FieldProof was built during Meta's Global AI Developer Hackathon. Hacking officially began on **26 Oct 2026 at 16:24 UTC**; the first commit in this repository is **27 Oct 2026, 03:12 UTC**, and the full history is preserved. Netlify's deploy records corroborate the timeline.
@@ -140,3 +152,4 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - The evidence pack is unsigned JSON.
 - Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
 - FieldProof does not certify regulatory compliance.
+- Jobs and bids is a pilot: synthetic jobs only so far, introduction terms are a pilot draft, and no fee is charged by the app.
