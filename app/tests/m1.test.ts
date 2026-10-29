@@ -75,7 +75,11 @@ describe("M1 report and review page", () => {
   it("the review page shows the location to the reviewer and loads the live map only on request", () => {
     const html = locationSectionHtml(geoFromMission(mission), false) as string;
     assert.ok(html.includes('id="r-map"') && html.includes('id="r-mapbox"') && !html.includes("<iframe"));
+    // M1b: the third-party map is named on the control, and the professional's consent mentions a map.
+    assert.ok(html.includes("Show on OpenStreetMap") && html.includes("openstreetmap.org, which receives these coordinates"));
+    assert.ok(html.includes("(google.com)"));
     const src = readFileSync("app/src/ui.ts", "utf8");
+    assert.ok(src.includes("the client sees one location, accuracy and time, including on a map."));
     assert.match(src, /checkinCard\(m\.checkin, geo\)/);
     assert.match(src, /bindMapButton\(geo\);/);
     assert.match(src, /<input type="checkbox" id="r-printloc" \/>/);
