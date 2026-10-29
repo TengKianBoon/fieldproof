@@ -4,7 +4,7 @@
 // evidence loads via evidence-get + blob URLs, revoked on every re-render.
 import "./buffer-shim.ts";
 import "./ui.css";
-import { parseHashRoute, workLink, reviewLink, jobOwnerLink, jobBidLink, jobClaimLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
+import { parseHashRoute, workLink, reviewLink, jobOwnerLink, jobBidLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
 import { buildGlassesHUD, GLASSES_LABEL } from "./glasses.ts";
 import { jobErrorWords, jobInstant, renderBid, renderClaim, renderJobForm, renderOwner } from "./jobsView.ts";
 import type { BidderCheck, BidderJobView, OwnerCheck } from "./jobsView.ts";
@@ -88,30 +88,30 @@ async function render(): Promise<void> {
 async function viewLanding(el: HTMLElement): Promise<void> {
   // F2: static presentation only - no fetch, no tokens, no behavior.
   el.innerHTML = landingHTML();
-  // J2: one additive exception to the static landing — a "Post a job
-  // (pilot)" link appears only when health reports jobsEnabled: true.
-  try {
-    const hr = await fetch("/.netlify/functions/health");
-    const hh = (await hr.json()) as { jobsEnabled?: unknown };
-    if (hr.ok && hh.jobsEnabled === true && document.getElementById("l-jobs") === null) {
-      const hero = el.querySelector(".hero");
-      if (hero !== null) {
-        const a = document.createElement("a");
-        a.id = "l-jobs";
-        a.href = "#/jobs/new";
-        a.textContent = "Post a job (pilot)";
-        hero.appendChild(a);
-      }
-    }
-  } catch {
-    // Health unreachable: no jobs link. The landing stays as-is.
-  }
+  // J2b: the main buttons work at once, before (and whatever happens to)
+  // the optional health check below.
   (document.getElementById("l-start") as HTMLButtonElement).onclick = () => {
     window.location.hash = "#/new";
   };
   (document.getElementById("l-how") as HTMLButtonElement).onclick = () => {
     document.getElementById("l-steps")?.scrollIntoView();
   };
+  // J2: one additive exception to the static landing — a "Post a job
+  // (pilot)" link appears only when health reports jobsEnabled: true.
+  try {
+    const hr = await fetch("/.netlify/functions/health", { signal: AbortSignal.timeout(4000) });
+    const hh = (await hr.json()) as { jobsEnabled?: unknown };
+    const hero = el.querySelector(".hero");
+    if (hr.ok && hh.jobsEnabled === true && hero !== null && hero.isConnected && document.getElementById("l-jobs") === null) {
+      const a = document.createElement("a");
+      a.id = "l-jobs";
+      a.href = "#/jobs/new";
+      a.textContent = "Post a job (pilot)";
+      hero.appendChild(a);
+    }
+  } catch {
+    // Health unreachable or slow: no jobs link. The landing stays as-is.
+  }
 }
 
 // F2 chips: worker states stay neutral words; client states carry the
@@ -975,6 +975,14 @@ function viewJobsNew(el: HTMLElement): void {
       const checkDl = jobInstant((document.getElementById("j-check-dl") as HTMLInputElement).value, zoneOf("j-checktz"));
       if (bidDl === null || checkDl === null) throw new Error("need_timezone");
       const cur = (document.getElementById("j-currency") as HTMLSelectElement).value;
+      // J2b: an empty budget box is a missing budget, never a silent 0.
+      const money = (id: string): number => {
+        const v = (document.getElementById(id) as HTMLInputElement).value.trim();
+        return v === "" ? Number.NaN : Number(v);
+      };
+      const bMin = money("j-budget-min");
+      const bMax = money("j-budget-max");
+      if (!Number.isFinite(bMin) || !Number.isFinite(bMax)) throw new Error("need_budget");
       const skills = (document.getElementById("j-skills") as HTMLInputElement).value
         .split(",").map((s) => s.trim()).filter((s) => s !== "");
       const body = {
@@ -985,8 +993,8 @@ function viewJobsNew(el: HTMLElement): void {
         windowStart: (document.getElementById("j-win-start") as HTMLInputElement).value,
         windowEnd: (document.getElementById("j-win-end") as HTMLInputElement).value,
         budget: {
-          min: Number((document.getElementById("j-budget-min") as HTMLInputElement).value),
-          max: Number((document.getElementById("j-budget-max") as HTMLInputElement).value),
+          min: bMin,
+          max: bMax,
           currency: cur,
         },
         skills,
@@ -1000,8 +1008,7 @@ function viewJobsNew(el: HTMLElement): void {
       const c = await calls.jobCreate(body, headers) as { jobId: string; ownerToken: string };
       const ol = jobOwnerLink(window.location.origin, c.jobId, c.ownerToken);
       out.innerHTML = `<div class="card links"><p class="ok">Job ${esc(c.jobId)} drafted.</p>`
-        + `<p>Owner link (bearer link — keep it private):</p><a href="${esc(ol)}">${esc(ol)}</a><button id="j-cw">Copy owner link</button>`
-        + `<p class="muted">An agent draft is claimed the same way: share ${esc(jobClaimLink(window.location.origin, c.jobId))} with the client, who opens it with the access code.</p></div>`;
+        + `<p>Owner link (bearer link — keep it private):</p><a href="${esc(ol)}">${esc(ol)}</a><button id="j-cw">Copy owner link</button></div>`;
       (document.getElementById("j-cw") as HTMLButtonElement).onclick = () => void copyText(ol).then(() => {
         (document.getElementById("j-cw") as HTMLButtonElement).textContent = "Copied";
       });
@@ -1012,6 +1019,7 @@ function viewJobsNew(el: HTMLElement): void {
         : m.includes("requester_code_denied") ? `<p class="err">Wrong access code (${(document.getElementById("j-code") as HTMLInputElement).value.length} characters entered)</p>`
         : m.includes("need_one_code") ? `<p class="err">Enter at least one item code.</p>`
         : m.includes("need_timezone") ? `<p class="err">Choose a time zone for each deadline.</p>`
+        : m.includes("need_budget") ? `<p class="err">Enter the budget minimum and maximum as numbers.</p>`
         : m.includes("job_leaks_code") ? `<p class="err">This text contains one of the item codes. Remove it so the people you invite never see the item codes.</p>`
         : errBox(e);
       go.disabled = false;

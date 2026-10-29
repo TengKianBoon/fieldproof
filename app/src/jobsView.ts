@@ -143,8 +143,8 @@ export function renderOwner(
     + (opts.check === undefined || opts.check === null ? ""
       : `<p><a href="${esc(reviewLink(opts.origin, opts.check.missionId, opts.check.reviewToken))}">Open the FieldProof review</a></p>`)
     + `</div>`;
-  const cancel = job.status === "accepted" || job.status === "cancelled" ? ""
-    : `<button id="jo-cancel2">Cancel job</button>`;
+  // J2b: a draft already has Cancel next to Publish; an open job gets one here.
+  const cancel = job.status === "open" ? `<button id="jo-cancel2">Cancel job</button>` : "";
   return `<h1>Client — Job ${esc(job.jobId.length > 12 ? `${job.jobId.slice(0, 12)}…` : job.jobId)}</h1>`
     + summary + action + pendingLine
     + (cards === "" ? "" : `<div id="jo-bids">${cards}</div>`)
