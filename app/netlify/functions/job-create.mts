@@ -8,7 +8,7 @@ import { requesterIdentity } from "../../shared/identity.ts";
 import { parseAbsolute } from "../../shared/timezone.ts";
 import { FieldJobs, idempotentJobId, validateJobInput, type FieldJob } from "../../shared/fieldJobs.ts";
 import { ok, fail, type Result } from "../../shared/types.ts";
-import { jobsOff, ownerToken, statusFor } from "../lib/jobs-http.mts";
+import { agentToken, jobsOff, ownerToken, statusFor } from "../lib/jobs-http.mts";
 
 
 export default async function handler(req: Request): Promise<Response> {
@@ -68,5 +68,8 @@ export default async function handler(req: Request): Promise<Response> {
   }
   if (!created.ok) return json(statusFor(created.error as string), { error: created.error });
   const j = created.value as FieldJob;
-  return json(200, { jobId: j.jobId, status: j.status, ownerToken: ownerToken(j.jobId) });
+  // J1b: the owner link is for the person who publishes and selects; the
+  // agent link is read-only (status). An MCP client should hand the model the
+  // agent link only and show the owner link to the person.
+  return json(200, { jobId: j.jobId, status: j.status, ownerToken: ownerToken(j.jobId), agentToken: agentToken(j.jobId) });
 }

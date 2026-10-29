@@ -9,6 +9,9 @@ import { ok, fail, type Result } from "../../shared/types.ts";
 
 export const OWNER_ROLE = "job-owner";
 export const BIDDER_ROLE = "job-bidder";
+// J1b: a read-only capability for an AI agent: job status only. It can never
+// publish, invite, select, bid, accept or see bids, names or contacts.
+export const AGENT_ROLE = "job-agent";
 const LINK_MS = 14 * 24 * 3600 * 1000;
 const JOB_ID_RE = /^j_[A-Za-z0-9-]{8,64}$/;
 
@@ -22,6 +25,20 @@ export function validJobId(v: unknown): v is string {
 
 export function ownerToken(jobId: string): string {
   return mintLink(secret(), { missionId: jobId, role: OWNER_ROLE, exp: Date.now() + LINK_MS, nonce: `job-owner-${jobId}` });
+}
+
+export function agentToken(jobId: string): string {
+  return mintLink(secret(), { missionId: jobId, role: AGENT_ROLE, exp: Date.now() + LINK_MS, nonce: `job-agent-${jobId}` });
+}
+
+// Status reader: the owner link or the agent's read-only link.
+export function needStatusReader(body: Record<string, unknown>, jobId: string): Result<string> {
+  if (typeof body.token !== "string") return fail("missing_token");
+  const v = verifyLink(secret(), body.token, Date.now(), jobId, isRevoked);
+  if (!v.ok) return fail(v.error as string);
+  const role = (v.value as { role: string }).role;
+  if (role !== OWNER_ROLE && role !== AGENT_ROLE) return fail("wrong_role");
+  return ok(role);
 }
 
 export function bidderToken(jobId: string, bidId: string): string {
