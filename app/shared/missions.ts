@@ -13,6 +13,7 @@ import { transitionMission, transitionItem } from "./state.ts";
 import { compareLabels } from "./compare.ts";
 import { summarizeReview } from "./reviewSummary.ts";
 import type { KVStore } from "./store.ts";
+import type { JobBrief } from "./types.ts";
 
 export const MAX_CLOSEUPS = 2;
 export const CONSENT_VERSION = "v1";
@@ -24,6 +25,16 @@ export const MIN_ITEMS = 1;
 export const MAX_ITEMS = 10;
 export function boxId(i: number): string {
   return `box${i + 1}`;
+}
+
+// Neutral worker-facing item state: the stored comparison is preserved,
+// but the worker brief exposes only pending/received/retake — never
+// expected codes or match/mismatch results.
+export type WorkerItemState = "pending" | "received" | "retake";
+export function workerItemState(state: string): WorkerItemState {
+  if (state === "matched" || state === "mismatched" || state === "inconclusive") return "received";
+  if (state === "unclear" || state === "closeup_requested") return "retake";
+  return "pending";
 }
 
 // Task 0b: only these item states may start a new upload/capture. Finished
@@ -80,6 +91,7 @@ export class Missions {
     deadline: string,
     followup?: { parentId: string; parentItemIds: string[] },
     missionId?: string,
+    brief?: JobBrief,
   ): Result<Mission> {
     if (expected.length < MIN_ITEMS || expected.length > MAX_ITEMS) return fail("bad_item_count");
     for (const e of expected) {
@@ -102,6 +114,9 @@ export class Missions {
     if (followup !== undefined) {
       m.followUpOf = followup.parentId;
       m.parentItemIds = [...followup.parentItemIds];
+    }
+    if (brief !== undefined) {
+      m.brief = brief;
     }
     for (const e of expected) {
       m.observed[e.itemId] = {

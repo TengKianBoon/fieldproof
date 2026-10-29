@@ -14,6 +14,13 @@ export type Readability = "clear" | "blurred" | "covered" | "unreadable";
 export interface ExpectedItem {
   itemId: string;
   expectedLabel: string;
+  photoHint?: string;
+}
+
+export interface JobBrief {
+  title?: string;
+  role?: string;
+  instructions?: string;
 }
 
 export interface ObservedItem {
@@ -47,6 +54,9 @@ export interface Mission {
   // Stage 2b-1: parent-bound follow-up metadata. Absent on original missions.
   followUpOf?: string;
   parentItemIds?: string[];
+  // Job brief (optional): plain client guidance shown to both sides.
+  // Never carries expected codes (enforced at create).
+  brief?: JobBrief;
 }
 
 export interface Result<T> {

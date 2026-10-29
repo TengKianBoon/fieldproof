@@ -123,7 +123,9 @@ describe("F1 note fallback keeps valid site and items", () => {
     assert.equal(body.mission.siteLabel, "Dock A");
     assert.equal(body.mission.deadline, "2026-11-30T10:00:00.000Z");
     assert.equal(body.mission.items.length, 3);
-    assert.deepEqual(body.mission.items.map((i) => i.state), ["matched", "expected", "expected"]);
+    assert.deepEqual(body.mission.items.map((i) => i.state), ["received", "pending", "pending"]);
     assert.ok(!JSON.stringify(body).includes("B12"));
+    assert.ok(!JSON.stringify(body).includes("matched"));
+    assert.ok(!JSON.stringify(body).includes("mismatched"));
   });
 });

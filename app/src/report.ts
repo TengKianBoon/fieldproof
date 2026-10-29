@@ -27,11 +27,12 @@ export interface ReportMission {
   siteLabel?: string;
   deadline?: string;
   createdAt?: string;
-  expected?: Array<{ itemId: string; expectedLabel: string }>;
+  expected?: Array<{ itemId: string; expectedLabel: string; photoHint?: string }>;
   observed?: Record<string, ReportObserved>;
   reviewerDecision?: Record<string, string>;
   followUpOf?: string;
   parentItemIds?: string[];
+  brief?: { title?: string; role?: string; instructions?: string } | null;
 }
 
 export interface ReportItem {
@@ -46,6 +47,7 @@ export interface ReportItem {
   hasBox: boolean;
   box: { x1: number; y1: number; x2: number; y2: number } | null;
   samNote: string | null;
+  hint: string | null;
 }
 
 export interface ReportData {
@@ -61,6 +63,7 @@ export interface ReportData {
   summary: ReviewSummary;
   followUpOf: string | null;
   parentItemIds: string[];
+  brief: { title: string | null; role: string | null; instructions: string | null } | null;
 }
 
 function resc(s: string): string {
@@ -73,18 +76,19 @@ function shortRef(id: string): string {
 
 // Plain-English mission states for display only; gates run on raw states.
 export function plainState(state: string): string {
-  if (state === "in_review") return "With the reviewer";
+  if (state === "in_review") return "With the client";
   if (state === "decided") return "Review finished";
   return state;
 }
 
-// Worker-facing item words (5X106/107): a stored photo is only ever
-// "Photo received" — the worker never sees match/mismatch readings, so the
-// result cannot leak through the heading. Unclear/close-up guidance is
-// unchanged. Display only; gates compare raw codes.
+// Worker-facing item words: the brief exposes only neutral states, so the
+// heading mirrors them — a stored photo is only ever "Photo received", and
+// the worker never sees match/mismatch readings or an "Expected" label.
+// Display only; gates compare raw codes.
 export function plainWorkerItem(state: string): string {
-  if (state === "matched" || state === "mismatched") return "Photo received";
-  return plainItem(state);
+  if (state === "received") return "Photo received";
+  if (state === "retake") return "Retake photo";
+  return "Waiting for photo";
 }
 
 // Plain-word item/decision labels for display only; gates compare raw codes.
@@ -146,6 +150,7 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
     if (decision === null) unresolved.push(resc(e.itemId));
     else if (rawDecision === "confirmed_mismatch") mismatched.push(resc(e.itemId));
     else if (rawDecision === "inconclusive") inconclusive.push(resc(e.itemId));
+    const hint = typeof e.photoHint === "string" && e.photoHint !== "" ? resc(e.photoHint) : null;
     if (o === undefined) {
       items.push({
         itemId: resc(e.itemId),
@@ -159,6 +164,7 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
         hasBox: false,
         box: null,
         samNote: null,
+        hint,
       });
       continue;
     }
@@ -179,6 +185,7 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
         : sam === "none" ? resc("none found")
         : sam.startsWith("sam:skipped") ? resc("not run")
         : sam.startsWith("sam:") ? resc(`unavailable (${sam})`) : null,
+      hint,
     });
   }
   return {
@@ -196,6 +203,13 @@ export function buildReport(m: ReportMission, timeZone = "UTC"): ReportData {
     parentItemIds: Array.isArray(m.parentItemIds)
       ? m.parentItemIds.filter((i): i is string => typeof i === "string").map((i) => resc(i))
       : [],
+    brief: typeof m.brief === "object" && m.brief !== null
+      ? {
+        title: typeof m.brief.title === "string" ? resc(m.brief.title) : null,
+        role: typeof m.brief.role === "string" ? resc(m.brief.role) : null,
+        instructions: typeof m.brief.instructions === "string" ? resc(m.brief.instructions) : null,
+      }
+      : null,
   };
 }
 
@@ -237,6 +251,7 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + `</style></head><body><h1>Field evidence report</h1>`
     + `<p class="muted">Mission ${data.mission} · Site ${data.site} · Status ${data.status}</p>`
     + `<p>Summary: ${resc(summaryCompact(data.summary))}</p>`
+    + (data.brief === null ? "" : `<p>Brief: ${[data.brief.title, data.brief.role, data.brief.instructions].filter((x): x is string => x !== null).join(" · ")}</p>`)
     + (data.followUpOf === null ? "" : `<p>Follow-up of mission ${data.followUpOf} — parent items: ${data.parentItemIds.join(", ")}</p>`)
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
     + group("Awaiting reviewer decision", data.unresolved)

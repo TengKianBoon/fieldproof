@@ -6,6 +6,7 @@
 // Token via header (never query) to avoid log/referrer leak.
 import { ctx, json, secret, isRevoked } from "./_ctx.mts";
 import { verifyLink } from "../../shared/links.ts";
+import { workerItemState } from "../../shared/missions.ts";
 import type { Mission } from "../../shared/types.ts";
 
 export const EXPORT_MAX_BYTES = 4 * 1024 * 1024;
@@ -40,12 +41,20 @@ export async function stateHandler(req: Request): Promise<Response> {
   const m = ctx().missions.load(missionId);
   if (m === null) return json(404, { error: "unknown_mission" });
   if (role === "worker") {
+    // Neutral capture brief: pending/received/retake only, per-item hints
+    // and the job brief when set. No expected codes, no comparison results;
+    // the stored reviewer comparisons are preserved untouched.
     const brief = {
       missionId: m.missionId,
       siteLabel: m.siteLabel,
       deadline: m.deadline,
       state: m.state,
-      items: m.expected.map((e) => ({ itemId: e.itemId, state: (m as Mission).observed[e.itemId].state })),
+      brief: m.brief ?? null,
+      items: m.expected.map((e) => ({
+        itemId: e.itemId,
+        state: workerItemState((m as Mission).observed[e.itemId].state),
+        ...(e.photoHint === undefined ? {} : { hint: e.photoHint }),
+      })),
     };
     return json(200, { mission: brief, viewerRole: role });
   }

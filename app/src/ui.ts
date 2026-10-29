@@ -62,7 +62,7 @@ async function render(): Promise<void> {
     if (r.name === "new") viewNew(el);
     else if (r.name === "work") await viewWork(el, r.missionId, r.token);
     else if (r.name === "review") await viewReview(el, r.missionId, r.token);
-    else el.innerHTML = `<h1>FieldProof</h1><p class="err">Unknown link. Ask the requester for a fresh worker or reviewer link.</p>`;
+    else el.innerHTML = `<h1>FieldProof</h1><p class="err">Unknown link. Ask the client for a fresh field professional or client link.</p>`;
   } catch (e) {
     el.innerHTML = `<h1>FieldProof</h1>${errBox(e)}`;
   }
@@ -182,8 +182,8 @@ function viewNew(el: HTMLElement): void {
       if (typeof last.w === "string" && typeof last.r === "string" && last.w !== "" && last.r !== "") {
         (document.getElementById("f-last") as HTMLElement).innerHTML =
           `<div class="card links"><p class="muted">Last mission links on this device:</p>` +
-          `<p>Worker:</p><a href="${esc(last.w)}">${esc(last.w)}</a>` +
-          `<p>Reviewer:</p><a href="${esc(last.r)}">${esc(last.r)}</a></div>`;
+          `<p>Field professional:</p><a href="${esc(last.w)}">${esc(last.w)}</a>` +
+          `<p>Client:</p><a href="${esc(last.r)}">${esc(last.r)}</a></div>`;
       }
     }
   } catch {
@@ -213,8 +213,8 @@ function viewNew(el: HTMLElement): void {
       const wl = workLink(window.location.origin, c.missionId, c.workerToken);
       const rl = reviewLink(window.location.origin, c.missionId, c.reviewToken);
       out.innerHTML = `<div class="card links"><p class="ok">Mission ${esc(shortId(c.missionId))} open.</p>
-        <p>Worker link:</p><a href="${esc(wl)}">${esc(wl)}</a><button id="f-cw">Copy worker link</button>
-        <p>Reviewer link:</p><a href="${esc(rl)}">${esc(rl)}</a><button id="f-cr">Copy reviewer link</button>
+        <p>Field professional link:</p><a href="${esc(wl)}">${esc(wl)}</a><button id="f-cw">Copy field professional link</button>
+        <p>Client link:</p><a href="${esc(rl)}">${esc(rl)}</a><button id="f-cr">Copy client link</button>
         <button id="f-again">Start another mission</button></div>`;
       const cw = document.getElementById("f-cw") as HTMLButtonElement;
       const cr = document.getElementById("f-cr") as HTMLButtonElement;
@@ -364,6 +364,13 @@ function viewNew(el: HTMLElement): void {
 interface BriefItem {
   itemId: string;
   state: string;
+  hint?: string;
+}
+
+interface WorkBrief {
+  title?: string;
+  role?: string;
+  instructions?: string;
 }
 
 // Guided-capture position: persists across viewWork re-renders so a worker
@@ -373,7 +380,7 @@ let workIndex = 0;
 
 async function viewWork(el: HTMLElement, missionId: string, token: string): Promise<void> {
   const s = await calls.state(missionId, token) as {
-    mission: { state: string; siteLabel: string; deadline: string; items: BriefItem[] };
+    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[] };
   };
   const m = s.mission;
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
@@ -385,7 +392,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   if (m.state !== "capturing") {
     el.innerHTML = `<h1>Field professional — Collection</h1><p>${esc(m.siteLabel)}</p>
       <div class="card"><p>Consent: photos of each labelled box are collected as delivery evidence and shown to the reviewer.</p>
-      <label>Worker ID<input id="w-id" type="text" value="worker-1" /></label>
+      <label>Field professional ID<input id="w-id" type="text" value="worker-1" /></label>
       <button id="w-ok" class="primary">Accept and start</button></div><div id="w-out"></div>`;
     (document.getElementById("w-ok") as HTMLButtonElement).onclick = async () => {
       const out = document.getElementById("w-out") as HTMLElement;
@@ -408,7 +415,7 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   // F1: the assignment header names site, deadline with zone, item count,
   // and three steps; progress counts completed vs remaining items.
   const doneCount = (list: Array<{ state: string }>): number =>
-    list.filter((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive").length;
+    list.filter((it) => it.state === "received").length;
   const fmtDeadline = (iso: string): string => {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return iso;
@@ -418,7 +425,11 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
     } catch {
       // Keep UTC.
     }
-    return `${d.toLocaleString()} ${zone}`;
+    // No seconds on the worker Due line.
+    const when = d.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    return `${when} ${zone}`;
   };
   if (workMission !== missionId) {
     workMission = missionId;
@@ -435,19 +446,26 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   const k = workIndex;
   const cur = m.items[k];
   // Task 0b: finished items show no capture controls — only the done note
-  // with Next / Send-for-review guidance.
-  const finished = cur.state === "matched" || cur.state === "mismatched" || cur.state === "inconclusive";
+  // with Next / Send-for-review guidance. The brief state is neutral here.
+  const finished = cur.state === "received";
   const card = `<div class="card" data-item="${esc(cur.itemId)}">
       <p><strong>${esc(cur.itemId)}</strong> — ${esc(plainWorkerItem(cur.state))}</p>
+      ${cur.hint === undefined || cur.hint === "" ? "" : `<p class="muted">Tip: ${esc(cur.hint)}</p>`}
       ${finished
         ? `<p class="muted">Photo received - this item is done. Continue with Next, or Send for review when every item shows Photo received.</p>`
         : `<input type="file" accept="image/*" capture="environment" data-photo="${esc(cur.itemId)}" />
       <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>`}
       <div data-msg="${esc(cur.itemId)}"></div></div>`;
-  const allDone = m.items.every((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive");
+  const allDone = m.items.every((it) => it.state === "received");
   const received = doneCount(m.items);
   const remaining = m.items.length - received;
-  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p><div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
+  const briefCard = m.brief == null ? ""
+    : `<div class="card" id="w-brief">${
+      (m.brief.title === undefined || m.brief.title === "" ? "" : `<p><strong>${esc(m.brief.title)}</strong></p>`)
+      + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
+      + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
+    }</div>`;
+  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p>${briefCard}<div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
     <div class="row"><button id="w-prev"${k === 0 ? " disabled" : ""}>Previous</button><button id="w-next"${k === m.items.length - 1 ? " disabled" : ""}>Next</button></div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
   const savePos = (n: number): void => {
@@ -558,12 +576,13 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         samStatus?: { uploadId: string; status: string } | null;
       }>;
       reviewerDecision: Record<string, string>;
+      brief?: { title?: string; role?: string; instructions?: string } | null;
     };
   };
   const m = s.mission;
   if (m.state !== "in_review" && m.state !== "decided") {
     const photos = m.expected.filter((e) => m.observed[e.itemId]?.uploadId).length;
-    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for worker — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
+    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for the field professional — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
     (document.getElementById("r-refresh") as HTMLButtonElement).onclick = () => void render();
     return;
   }
@@ -581,7 +600,13 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   // Stage 2a: concise two-axis summary above the item cards — exceptions
   // first, matches as a count, undecided mismatches never "confirmed".
   const reviewSummary = `<div class="card" id="r-summary"><p><strong>Summary</strong></p>${summaryLines(summarizeReview(m)).map((l) => `<p>${esc(l)}</p>`).join("")}</div>`;
-  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewSummary}
+  const reviewBrief = m.brief == null ? ""
+    : `<div class="card" id="r-brief"><p><strong>Brief</strong></p>${
+      (m.brief.title === undefined || m.brief.title === "" ? "" : `<p><strong>${esc(m.brief.title)}</strong></p>`)
+      + (m.brief.role === undefined || m.brief.role === "" ? "" : `<p>${esc(m.brief.role)}</p>`)
+      + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
+    }</div>`;
+  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${reviewSummary}
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
@@ -715,8 +740,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
         (document.getElementById("r-fdone") as HTMLElement).innerHTML =
           `<div class="card links"><p class="ok">Follow-up ${esc(shortId(c.missionId))} open.</p>` +
           `<p>Follow-up of ${esc(shortId(missionId))} — parent items: ${c.parentItemIds.map(esc).join(", ")}</p>` +
-          `<p>Worker link:</p><a href="${esc(wl)}">${esc(wl)}</a>` +
-          `<p>Reviewer link:</p><a href="${esc(rl)}">${esc(rl)}</a></div>`;
+          `<p>Field professional link:</p><a href="${esc(wl)}">${esc(wl)}</a>` +
+          `<p>Client link:</p><a href="${esc(rl)}">${esc(rl)}</a></div>`;
       } catch (e) {
         const s = e instanceof Error ? e.message : String(e);
         fout.innerHTML = s.includes("requester_code_denied") ? wrongCodeMsg()
