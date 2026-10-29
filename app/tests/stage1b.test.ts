@@ -91,7 +91,7 @@ describe("Stage 1b unified items", () => {
     const { default: createH } = await import("../netlify/functions/mission-create.mts");
     for (const n of [1, 3, 10]) {
       __setBlobsTestBackends({ kv: new MockBlobsKVBackend(), bytes: new MockBlobsBytesBackend() });
-      const c = await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: labels(n), deadline: "t" }));
+      const c = await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: labels(n), deadline: "2026-11-30T10:00:00.000Z" }));
       assert.equal(c.status, 200);
       const mid = String(c.body.missionId);
       const m = await blobsScope(mid, {}, () => ctx().missions.load(mid));
@@ -103,10 +103,10 @@ describe("Stage 1b unified items", () => {
   it("rejects 0 and 11 items and bad labels", async () => {
     const { default: createH } = await import("../netlify/functions/mission-create.mts");
     __setBlobsTestBackends({ kv: new MockBlobsKVBackend(), bytes: new MockBlobsBytesBackend() });
-    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: [], deadline: "t" }))).body.error, "bad_item_count");
-    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: labels(11), deadline: "t" }))).body.error, "bad_item_count");
-    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: ["b12"], deadline: "t" }))).body.error, "bad_label");
-    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: [""], deadline: "t" }))).body.error, "bad_label");
+    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: [], deadline: "2026-11-30T10:00:00.000Z" }))).body.error, "bad_item_count");
+    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: labels(11), deadline: "2026-11-30T10:00:00.000Z" }))).body.error, "bad_item_count");
+    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: ["b12"], deadline: "2026-11-30T10:00:00.000Z" }))).body.error, "bad_label");
+    assert.equal((await jsonOf(await post(createH, { siteLabel: "S", expectedLabels: [""], deadline: "2026-11-30T10:00:00.000Z" }))).body.error, "bad_label");
   });
 
   it("ignores forged client ids and binds uploads to assigned slots", async () => {
@@ -117,7 +117,7 @@ describe("Stage 1b unified items", () => {
     const c = await jsonOf(await post(createH, {
       siteLabel: "S",
       expectedItems: [{ itemId: "b9", expectedLabel: "B12" }, { itemId: "__proto__", expectedLabel: "B17" }],
-      deadline: "t",
+      deadline: "2026-11-30T10:00:00.000Z",
     }));
     assert.equal(c.status, 200);
     const mid = String(c.body.missionId);

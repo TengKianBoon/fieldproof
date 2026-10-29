@@ -112,7 +112,7 @@ describe("S2d full flow over shared mocked Blobs only", () => {
     const { default: finishH } = await import("../netlify/functions/finish-review.mts");
     const { default: exportH } = await import("../netlify/functions/export-pack.mts");
     const c = await jsonOf(await post(createH, {
-      siteLabel: "S2d", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "S2d", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z",
     }));
     assert.equal(c.status, 200);
     missionId = String(c.body.missionId);
@@ -163,7 +163,7 @@ describe("S2d spark capture: one fetch across a CAS conflict", () => {
     const { default: consentH } = await import("../netlify/functions/consent-accept.mts");
     const { default: captureH } = await import("../netlify/functions/capture-submit.mts");
     const c = await jsonOf(await post(createH, {
-      siteLabel: "Spark", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "Spark", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z",
     }));
     const mid = String(c.body.missionId);
     const wt = String(c.body.workerToken);

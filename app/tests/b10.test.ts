@@ -70,7 +70,7 @@ describe("B10 ledger ceiling (USD/day) + no upload charges", () => {
     const req = (body: unknown) =>
       new Request("http://local/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const c = (await (await create(req({
-      siteLabel: "B10", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "B10", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z",
     }))).json()) as Record<string, string>;
     const missionId = c.missionId;
     const worker = c.workerToken;

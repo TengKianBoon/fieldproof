@@ -19,6 +19,36 @@ export function hasZoneSuffix(s: string): boolean {
   return ZONE_SUFFIX_RE.test(s.trim());
 }
 
+const ABS_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})$/;
+
+// Task 0e strict absolute deadline: YYYY-MM-DDTHH:MM[:SS[.sss]] followed by
+// Z or +/-HH:MM, with real calendar validity from validated fields plus a
+// UTC round-trip — never permissive Date.parse normalization.
+export function parseAbsolute(s: unknown): { ok: true; instant: string } | { ok: false } {
+  if (typeof s !== "string") return { ok: false };
+  const m = ABS_RE.exec(s.trim());
+  if (m === null) return { ok: false };
+  const Y = Number(m[1]);
+  const Mo = Number(m[2]);
+  const D = Number(m[3]);
+  const h = Number(m[4]);
+  const mi = Number(m[5]);
+  const sec = m[6] === undefined ? 0 : Number(m[6]);
+  if (Mo < 1 || Mo > 12 || D < 1 || D > 31 || h > 23 || mi > 59 || sec > 59) return { ok: false };
+  const ref = Date.UTC(Y, Mo - 1, D, h, mi, sec);
+  const c = new Date(ref);
+  if (c.getUTCFullYear() !== Y || c.getUTCMonth() !== Mo - 1 || c.getUTCDate() !== D) return { ok: false };
+  const z = m[8];
+  if (z !== "Z") {
+    const oh = Number(z.slice(1, 3));
+    const om = Number(z.slice(4, 6));
+    if (oh > 14 || om > 59 || (oh === 14 && om !== 0)) return { ok: false };
+  }
+  const ms = Date.parse(s.trim());
+  if (!Number.isFinite(ms)) return { ok: false };
+  return { ok: true, instant: new Date(ms).toISOString() };
+}
+
 export type ZoneKind = "utc" | "offset" | "iana";
 
 export function normalizeZone(zone: string): { ok: true; kind: ZoneKind; name: string } | { ok: false } {

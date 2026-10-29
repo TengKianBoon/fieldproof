@@ -36,7 +36,7 @@ async function setupMission(): Promise<{ missionId: string; worker: string; revi
   const { default: createH } = await import("../netlify/functions/mission-create.mts");
   const { default: consentH } = await import("../netlify/functions/consent-accept.mts");
   const c = (await (await post(createH, {
-    siteLabel: "S7", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
+    siteLabel: "S7", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z",
   })).json()) as { missionId: string; workerToken: string; reviewToken: string };
   const ok = (await (await post(consentH, { missionId: c.missionId, token: c.workerToken, workerId: "w", consentVersion: "v1" }))).status;
   assert.equal(ok, 200);

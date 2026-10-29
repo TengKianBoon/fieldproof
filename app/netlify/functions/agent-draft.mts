@@ -35,7 +35,7 @@ export default async function handler(req: Request): Promise<Response> {
   // Stable per-request owner: scope retries adopt this request's own
   // in-flight claim instead of mistaking it for a duplicate.
   const owner = `${Date.now().toString(36)}-${Math.floor(Math.random() * 2 ** 52)}`;
-  let ticket: { ledgerKey: string; mineRaw: string };
+  let ticket: { ledgerKey: string; mineRaw: string; day: string };
   try {
     const phase1 = await blobsScope(null, { extraKeys: [cacheKey] }, () => {
       const c = claimAttempt(store(), cacheKey, validDraft, { owner });
@@ -48,7 +48,8 @@ export default async function handler(req: Request): Promise<Response> {
         finishAttempt(store(), cacheKey, c.ticket.mineRaw, { error: r.error as string });
         return { tag: "error" as const, error: r.error as string };
       }
-      return { tag: "ticket" as const, ticket: c.ticket };
+      const day = (r.value as { day: string }).day;
+      return { tag: "ticket" as const, ticket: { ...c.ticket, day } };
     });
     if (phase1.tag === "cached") return json(200, { draft: phase1.draft });
     if (phase1.tag === "error") return json(statusFor(phase1.error), { error: phase1.error });
@@ -59,9 +60,10 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const fetched = await agentFetch(description, { key });
   try {
-    const phase2 = await blobsScope(null, { extraKeys: [cacheKey] }, () => {
+    const phase2 = await blobsScope(null, { extraKeys: [cacheKey, `ledger:${ticket.day}`] }, () => {
       const actual = fetched.ok ? (fetched.actual ?? max) : max;
-      const s = ctx().ledger.settle(AGENT_CALLER, AGENT_MISSION, ticket.ledgerKey, actual);
+      const s = ctx().ledger.settleHandle(
+        { day: ticket.day, caller: AGENT_CALLER, missionId: AGENT_MISSION, key: ticket.ledgerKey }, actual);
       if (!s.ok) {
         finishAttempt(store(), cacheKey, ticket.mineRaw, { error: s.error as string });
         return { settled: false as const, error: s.error as string };

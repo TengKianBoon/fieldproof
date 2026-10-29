@@ -53,7 +53,7 @@ describe("cross-mission chunk/complete", () => {
     const mk = async (site: string) => {
       const c = await jsonOf(
         await handlerCreate(
-          req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B1" }, { itemId: "box2", expectedLabel: "B2" }, { itemId: "box3", expectedLabel: "B3" }], deadline: "t" }),
+          req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B1" }, { itemId: "box2", expectedLabel: "B2" }, { itemId: "box3", expectedLabel: "B3" }], deadline: "2026-11-30T10:00:00.000Z" }),
         ),
       );
       return { missionId: String(c.body.missionId), worker: String(c.body.workerToken) };

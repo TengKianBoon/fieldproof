@@ -90,7 +90,7 @@ describe("S2b evidence-get auth", () => {
     const req = (body: unknown, headers?: Record<string, string>) =>
       new Request("http://local/x", { method: "POST", headers: { "content-type": "application/json", ...(headers ?? {}) }, body: JSON.stringify(body) });
     const c = (await (await create(req({
-      siteLabel: "Ev", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "t",
+      siteLabel: "Ev", expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z",
     }))).json()) as Record<string, string>;
     missionId = c.missionId;
     worker = c.workerToken;

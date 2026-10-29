@@ -24,7 +24,7 @@ async function create(headers: Record<string, string>): Promise<Response> {
     body: JSON.stringify({
       siteLabel: "S6",
       expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }],
-      deadline: "t",
+      deadline: "2026-11-30T10:00:00.000Z",
     }),
   }));
 }

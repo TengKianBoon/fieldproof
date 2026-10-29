@@ -30,7 +30,7 @@ async function jsonOf(r: Response): Promise<{ status: number; body: Record<strin
 async function makeMission(site: string): Promise<{ missionId: string; worker: string; reviewer: string; requester: string }> {
   const c = await jsonOf(
     await handlerCreate(
-      req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "tomorrow" }),
+      req({ siteLabel: site, expectedItems: [{ itemId: "box1", expectedLabel: "B12" }, { itemId: "box2", expectedLabel: "B17" }, { itemId: "box3", expectedLabel: "B23" }], deadline: "2026-11-30T10:00:00.000Z" }),
     ),
   );
   return {

@@ -46,7 +46,7 @@ async function freshMission(): Promise<{ mid: string; wt: string }> {
   const c = await jsonOf(await post(createH, {
     siteLabel: "T0b",
     expectedLabels: ["B12", "B17", "B23"],
-    deadline: "t",
+    deadline: "2026-11-30T10:00:00.000Z",
   }));
   assert.equal(c.status, 200);
   const mid = String(c.body.missionId);

@@ -66,7 +66,7 @@ async function captureWithSam(samReply: Response): Promise<{ seen: { imageUrl: s
       { itemId: "box2", expectedLabel: "B17" },
       { itemId: "box3", expectedLabel: "B23" },
     ],
-    deadline: "t",
+    deadline: "2026-11-30T10:00:00.000Z",
   }));
   assert.equal(c.status, 200);
   const mid = String(c.body.missionId);
