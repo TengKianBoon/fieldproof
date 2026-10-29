@@ -2,6 +2,7 @@
 // configuration booleans only: no secret values, no store access, no model
 // calls, and nothing echoed from the request.
 import { hasModelKey } from "./modelenv.ts";
+import { jobsEnabled } from "./fieldJobs.ts";
 
 // Kept in step with app/package.json (tested).
 export const APP_VERSION = "0.1.0";
@@ -17,6 +18,7 @@ export interface HealthSummary {
   linkSecretSet: boolean;
   accessCodeSet: boolean;
   spendCeilingValid: boolean;
+  jobsEnabled: boolean;
 }
 
 const isSet = (v: string | undefined): boolean => typeof v === "string" && v !== "";
@@ -46,5 +48,6 @@ export function healthSummary(env: Record<string, string | undefined>): HealthSu
     linkSecretSet,
     accessCodeSet,
     spendCeilingValid,
+    jobsEnabled: jobsEnabled(env),
   };
 }

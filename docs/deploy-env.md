@@ -12,6 +12,7 @@ separately after S2d approval.
 | META_API_KEY | Model key, server-side only. Fresh key per T6 rotation; the old key is deleted after S3. | New key in Netlify UI only |
 | SAM_CONCEPT | SAM label prompt noun phrase (letters/spaces only, max 40 chars; anything else falls back to `label`, never blocks capture). | `label` |
 | SAM_MODE | `off` switches SAM 3.1 off entirely: no call, no spend, no per-item "AI box" line. Unset or any other value leaves SAM on. | Unset (SAM on), or `off` |
+| JOBS_ENABLED | `on` turns on Jobs and bids (post a job with a budget, invite bids by private link, a person selects, the professional accepts, a FieldProof check is created). Anything else keeps the job endpoints closed (404). | Unset until the Jobs acceptance passes, then `on` |
 | FIELDPROOF_SECRET | Signs mission links (requester/worker/reviewer). | Random value in Netlify UI only |
 | REQUESTER_CODE | Access code for mission-create and agent-draft in production (header `x-requester-code`, constant-time check). | Secret in Netlify UI only; type it once on the #/new page |
 | LEDGER_CEILING_USD | Model-spend ceiling per UTC day. Missing or invalid fails closed (US$2 demo default only in non-production code). | `2` |
