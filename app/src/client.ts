@@ -41,12 +41,14 @@ async function get(name: string, params: Record<string, string>, token: string, 
   return r;
 }
 
-// Pure route parsing for hash links (#/new, #/work/<mid>/<tok>, #/review/...).
+// Pure route parsing for hash links (#/new, #/work/<mid>/<tok>, #/review/...,
+// #/glasses/<mid>/<tok>).
 export type Route =
   | { name: "landing" }
   | { name: "new" }
   | { name: "work"; missionId: string; token: string }
   | { name: "review"; missionId: string; token: string }
+  | { name: "glasses"; missionId: string; token: string }
   | { name: "unknown" };
 
 export function parseHashRoute(hash: string): Route {
@@ -57,7 +59,7 @@ export function parseHashRoute(hash: string): Route {
   // always sets a hash before rendering, so this input never reaches a view.
   if (parts.length === 0) return hash === "" ? { name: "unknown" } : { name: "landing" };
   if (parts.length === 1 && parts[0] === "new") return { name: "new" };
-  if (parts.length === 3 && (parts[0] === "work" || parts[0] === "review") && parts[1] !== "" && parts[2] !== "") {
+  if (parts.length === 3 && (parts[0] === "work" || parts[0] === "review" || parts[0] === "glasses") && parts[1] !== "" && parts[2] !== "") {
     return { name: parts[0], missionId: parts[1], token: parts[2] } as Route;
   }
   return { name: "unknown" };
@@ -65,6 +67,12 @@ export function parseHashRoute(hash: string): Route {
 
 export function workLink(origin: string, missionId: string, token: string): string {
   return `${origin}#/work/${missionId}/${token}`;
+}
+
+// G1: the glasses simulation opens by replacing /work/ with /glasses/ in a
+// worker link. Same worker token, same worker API — display concept only.
+export function glassesLink(origin: string, missionId: string, token: string): string {
+  return `${origin}#/glasses/${missionId}/${token}`;
 }
 
 export function reviewLink(origin: string, missionId: string, token: string): string {

@@ -58,6 +58,22 @@ pre { white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; font-size: 0.
   body { max-width: none; }
 }
 
+/* G1 glasses simulation HUD: dark display-concept panel, about 600x600,
+   large progress type, neutral photo words. Simulation label always first. */
+.hud { background: #0a2118; color: #fff; border-radius: 1rem; padding: 1.25rem; max-width: 600px; min-height: 600px; box-sizing: border-box; margin: 0.6rem 0; }
+.hud-label { font-size: 0.875rem; font-weight: 700; color: #f2c14e; margin: 0 0 0.75rem; }
+.hud-progress { font-size: 2rem; font-weight: 700; line-height: 1.2; margin: 0 0 0.5rem; }
+.hud-site { font-size: 1rem; margin: 0 0 0.75rem; }
+.hud-item { font-size: 1.25rem; font-weight: 700; margin: 0.5rem 0 0.25rem; }
+.hud-status { font-size: 1.5rem; font-weight: 700; margin: 0.25rem 0 0.5rem; }
+.hud-tip { font-size: 1rem; margin: 0.5rem 0; }
+.hud-note { font-size: 1rem; margin: 0.5rem 0; }
+.hud-nav { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.hud-nav > * { flex: 1; }
+.hud button.primary { background: #f2c14e; border-color: #f2c14e; color: #0a2118; }
+.hud label { color: #fff; }
+.hud input[type="text"] { background: #fff; }
+
 /* F2 desktop: wider measure with a two-column step grid; 360px phones keep
    the single column above. */
 @media (min-width: 48rem) {

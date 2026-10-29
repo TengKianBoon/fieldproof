@@ -5,6 +5,7 @@
 import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
+import { buildGlassesHUD, GLASSES_LABEL } from "./glasses.ts";
 import { landingHTML } from "./landing.ts";
 import { suggestReview } from "../shared/suggest.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
@@ -67,6 +68,7 @@ async function render(): Promise<void> {
     if (r.name === "landing") viewLanding(el);
     else if (r.name === "new") viewNew(el);
     else if (r.name === "work") await viewWork(el, r.missionId, r.token);
+    else if (r.name === "glasses") await viewGlasses(el, r.missionId, r.token);
     else if (r.name === "review") await viewReview(el, r.missionId, r.token);
     else el.innerHTML = `<h1>FieldProof</h1><p class="err">Unknown link. Ask the client for a fresh field professional or client link.</p>`;
   } catch (e) {
@@ -742,6 +744,136 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       await render();
     } catch (e) {
       (document.getElementById("w-out") as HTMLElement).innerHTML = errBox(e);
+    } finally {
+      b.disabled = false;
+    }
+  };
+}
+
+// G1 glasses simulation of guided capture: same worker token, same worker
+// data (mission-state worker view: itemId, neutral state, photo tip only)
+// and the same capture API (uploadPhoto + capture-submit) as viewWork —
+// display concept only. Demo opens by replacing /work/ with /glasses/ in a
+// worker link; there is no navigation link to it. The HUD shows itemId
+// (box number, not the code), the photo tip, and neutral photo words only:
+// expected codes, readings, and decisions never reach this view.
+let glassesMission = "";
+let glassesIndex = 0;
+
+async function viewGlasses(el: HTMLElement, missionId: string, token: string): Promise<void> {
+  const s = await calls.state(missionId, token) as {
+    mission: { state: string; siteLabel: string; deadline: string; brief?: WorkBrief | null; items: BriefItem[] };
+  };
+  const m = s.mission;
+  if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
+    el.innerHTML = `<h1>Field professional — Glasses simulation</h1>`
+      + buildGlassesHUD({ missionId, siteLabel: m.siteLabel, items: [], index: 0, closed: true });
+    return;
+  }
+  if (m.state !== "capturing") {
+    el.innerHTML = `<h1>Field professional — Glasses simulation</h1>`
+      + `<div class="hud"><p class="hud-label">${esc(GLASSES_LABEL)}</p>`
+      + `<p class="hud-site">${esc(m.siteLabel)}</p>`
+      + `<p>Consent: photos of each labelled box are collected as delivery evidence and shown to the reviewer.</p>`
+      + `<label>Field professional ID<input id="g-id" type="text" value="worker-1" /></label>`
+      + `<button id="g-ok" class="primary">Accept and start</button></div><div id="g-out"></div>`;
+    (document.getElementById("g-ok") as HTMLButtonElement).onclick = async () => {
+      const out = document.getElementById("g-out") as HTMLElement;
+      const b = document.getElementById("g-ok") as HTMLButtonElement;
+      if (b.disabled) return;
+      b.disabled = true;
+      try {
+        await calls.consent(missionId, token, (document.getElementById("g-id") as HTMLInputElement).value);
+        await render();
+      } catch (e) {
+        out.innerHTML = errBox(e);
+      } finally {
+        b.disabled = false;
+      }
+    };
+    return;
+  }
+  if (glassesMission !== missionId) {
+    glassesMission = missionId;
+    glassesIndex = 0;
+    try {
+      const saved = Number(sessionStorage.getItem(`fg-pos-${missionId}`));
+      if (Number.isInteger(saved) && saved >= 0 && saved < m.items.length) glassesIndex = saved;
+    } catch {
+      // Private mode: start at the first item.
+    }
+  }
+  if (glassesIndex >= m.items.length) glassesIndex = 0;
+  if (glassesIndex < 0) glassesIndex = 0;
+  const k = glassesIndex;
+  const cur = m.items[k];
+  const allDone = m.items.every((it) => it.state === "received");
+  el.innerHTML = `<h1>Field professional — Glasses simulation</h1>`
+    + buildGlassesHUD({ missionId, siteLabel: m.siteLabel, items: m.items, index: k, closed: false })
+    + `<button id="g-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="g-out"></div>`;
+  const savePos = (n: number): void => {
+    try {
+      sessionStorage.setItem(`fg-pos-${missionId}`, String(n));
+    } catch {
+      // Private mode: position is memory-only.
+    }
+  };
+  (el.querySelector("[data-gprev]") as HTMLButtonElement).onclick = () => {
+    glassesIndex = k - 1;
+    savePos(glassesIndex);
+    void render();
+  };
+  (el.querySelector("[data-gnext]") as HTMLButtonElement).onclick = () => {
+    glassesIndex = k + 1;
+    savePos(glassesIndex);
+    void render();
+  };
+  if (cur.state !== "received") {
+    const btn = el.querySelector(`[data-gshoot="${cur.itemId}"]`) as HTMLButtonElement;
+    const inp = el.querySelector(`[data-gphoto="${cur.itemId}"]`) as HTMLInputElement;
+    const msg = el.querySelector(`[data-gmsg="${cur.itemId}"]`) as HTMLElement;
+    btn.onclick = () => inp.click();
+    inp.onchange = async () => {
+      const f = inp.files?.[0];
+      if (!f) return;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      inp.disabled = true;
+      msg.innerHTML = `<p class="hud-note">Uploading…</p>`;
+      try {
+        const small = await shrinkPhoto(f);
+        const attempt = `a${Date.now()}`;
+        const up = await uploadPhoto(missionId, token, cur.itemId, attempt, `${cur.itemId}-${attempt}`, small, undefined);
+        const cap = await calls.capture(missionId, token, cur.itemId, up.uploadId) as { state: string };
+        if (cap.state === "retake") {
+          msg.innerHTML = `<p class="hud-note">Label unclear — open the phone link for a close-up.</p>`;
+        } else {
+          msg.innerHTML = `<p class="hud-note">Photo received.</p>`;
+          await render();
+        }
+      } catch (e) {
+        const em = e instanceof Error ? e.message : String(e);
+        const stale = staleItemMsg(em);
+        msg.innerHTML = stale !== null ? `<p class="hud-note">${esc(stale)}</p>`
+          : em.includes("reader_unavailable")
+            ? `<p class="hud-note">The reading service did not respond — take the photo again in a minute.</p>`
+            : errBox(e);
+      } finally {
+        btn.disabled = false;
+        inp.disabled = false;
+      }
+    };
+  }
+  (document.getElementById("g-review") as HTMLButtonElement).onclick = async () => {
+    const b = document.getElementById("g-review") as HTMLButtonElement;
+    if (b.disabled) return;
+    b.disabled = true;
+    try {
+      await calls.toReview(missionId, token);
+      flash = "Sent for review.";
+      await render();
+    } catch (e) {
+      (document.getElementById("g-out") as HTMLElement).innerHTML = errBox(e);
     } finally {
       b.disabled = false;
     }
