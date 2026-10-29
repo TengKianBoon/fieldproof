@@ -66,10 +66,10 @@ describe("R1c review brief repair", () => {
     }
   });
 
-  it("sends the proven live request shape: reasoning, 2000-token ceiling, no temperature, simple strict schema", () => {
+  it("sends the repaired request shape: low reasoning, 4000-token ceiling, no temperature, simple strict schema", () => {
     const req = rb.buildBriefRequest("{}") as Record<string, any>;
-    assert.deepEqual(req.reasoning, { effort: "medium" });
-    assert.equal(req.max_output_tokens, 2000);
+    assert.deepEqual(req.reasoning, { effort: "low" });
+    assert.equal(req.max_output_tokens, 4000);
     assert.equal("temperature" in req, false);
     assert.equal(req.store, false);
     assert.equal(req.text.format.strict, true);
@@ -147,6 +147,26 @@ describe("R1c review brief repair", () => {
     const r = await brief(mid, tok, "to-1", slow);
     assert.equal(r.status, 503);
     assert.equal(r.body.diag, "timeout");
+  });
+
+  it("R1d: the ceiling never exceeds what the ledger reserves per call", async () => {
+    const sc = await import("../shared/spikecost.ts");
+    assert.ok(rb.BRIEF_MAX_OUTPUT_TOKENS <= sc.MAX_OUTPUT_TOKENS);
+    // Worst case for the largest brief (10 items): input well under the
+    // planning estimate, output at the ceiling, cost within the reservation.
+    const items = Array.from({ length: 10 }, (_, i) => ({ itemId: `box${i + 1}`, expectedLabel: "B12345678901234567890".slice(0, 20) }));
+    const canonical = JSON.stringify(rb.buildBriefInput({ brief: { title: "T".repeat(80) }, state: "in_review", expected: items, observed: {}, reviewerDecision: {} }));
+    const inputChars = rb.BRIEF_PROMPT.length + canonical.length;
+    assert.ok(inputChars / 2 < sc.INPUT_PLANNING_ESTIMATE, "even at 2 chars per token the input stays under the planning estimate");
+    const worst = ((inputChars / 2) * sc.PRICE_IN + rb.BRIEF_MAX_OUTPUT_TOKENS * sc.PRICE_OUT) / 1_000_000;
+    assert.ok(worst <= sc.planningCapPerCall());
+  });
+
+  it("R1d: an incomplete response also reports the reasoning-token count (integer only)", () => {
+    const a = rb.parseBriefOutput({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, usage: { output_tokens: 4000, output_tokens_details: { reasoning_tokens: 3990 } }, output: [] });
+    assert.deepEqual(a, { ok: false, error: "incomplete:max_output_tokens:reasoning_3990" });
+    const b = rb.parseBriefOutput({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, usage: { output_tokens_details: { reasoning_tokens: "lots" } }, output: [] });
+    assert.deepEqual(b, { ok: false, error: "incomplete:max_output_tokens" });
   });
 
   it("unsafe status or reason words are replaced, never echoed", () => {

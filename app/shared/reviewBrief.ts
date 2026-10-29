@@ -14,11 +14,15 @@ export const BRIEF_MODEL = "muse-spark-1.3";
 export const BRIEF_ENDPOINT = "https://api.meta.ai/v1/responses";
 export const BRIEF_TIMEOUT_MS = 120_000;
 // R1c: Meta's Responses API counts reasoning tokens inside max_output_tokens,
-// so the brief uses the same proven shape as the live reader, note and agent
-// calls (reasoning effort plus a 2000-token ceiling, no temperature). The
-// ledger's per-call planning cap already assumes 4000 output tokens.
-export const BRIEF_MAX_OUTPUT_TOKENS = 2000;
-export const BRIEF_EFFORT = "medium";
+// so the brief uses the proven shape of the live reader/note/agent calls
+// (reasoning effort plus a ceiling, no temperature).
+// R1d: live diagnosis on R1c was incomplete:max_output_tokens at medium/2000.
+// A short text-only summary needs little reasoning, so effort drops to "low"
+// (a documented ReasoningEffort value), and the ceiling rises to 4000: exactly
+// the output tokens the ledger's per-call planning cap (spikecost
+// MAX_OUTPUT_TOKENS) already reserves, so the worst case stays covered.
+export const BRIEF_MAX_OUTPUT_TOKENS = 4000;
+export const BRIEF_EFFORT = "low";
 export const BRIEF_SUMMARY_MAX = 280;
 export const BRIEF_REC_MAX = 140;
 export const BRIEF_RECS_MAX = 4;
@@ -168,7 +172,11 @@ export function parseBriefOutput(parsed: unknown): { ok: true; brief: ReviewBrie
   // R1c: say WHY a response is unusable (sanitized), not just that it is.
   if (p.status === "incomplete") {
     const why = (p as { incomplete_details?: { reason?: unknown } | null }).incomplete_details?.reason;
-    return { ok: false, error: `incomplete:${word(why)}` };
+    // R1d: add the reasoning-token count (an integer only) when reported, so a
+    // repeat failure shows how much of the ceiling reasoning used.
+    const rt = (p.usage as { output_tokens_details?: { reasoning_tokens?: unknown } } | null | undefined)?.output_tokens_details?.reasoning_tokens;
+    const rtPart = Number.isInteger(rt) && (rt as number) >= 0 ? `:reasoning_${rt as number}` : "";
+    return { ok: false, error: `incomplete:${word(why)}${rtPart}` };
   }
   if (p.status !== "completed") return { ok: false, error: `status:${word(p.status)}` };
   if (text === null) return { ok: false, error: "no_output_text" };
