@@ -85,11 +85,11 @@ export function summaryLines(s: ReviewSummary): string[] {
   if (exceptions.length > 0) lines.push(`Needs attention: ${exceptions.join(", ")}`);
   lines.push(plural(s.matched, "match", "matches") + ` out of ${s.total}`);
   const review: string[] = [];
-  if (s.awaiting > 0) review.push(plural(s.awaiting, "awaiting reviewer decision", "awaiting reviewer decision"));
+  if (s.awaiting > 0) review.push(plural(s.awaiting, "awaiting client decision", "awaiting client decision"));
   if (s.confirmedMatch > 0) review.push(plural(s.confirmedMatch, "confirmed match", "confirmed matches"));
   if (s.confirmedMismatch > 0) review.push(plural(s.confirmedMismatch, "confirmed mismatch", "confirmed mismatches"));
   if (s.ruledInconclusive > 0) review.push(plural(s.ruledInconclusive, "ruled inconclusive", "ruled inconclusive"));
-  if (review.length > 0) lines.push(`Reviewer: ${review.join(", ")}`);
+  if (review.length > 0) lines.push(`Client: ${review.join(", ")}`);
   return lines;
 }
 

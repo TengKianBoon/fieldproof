@@ -263,11 +263,12 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     }
     const boxNote = row.hasBox || row.samNote === null ? "" : `<p class="muted">AI box: ${row.samNote}</p>`;
     const decision = row.decision === null
-      ? `<span class="muted">awaiting reviewer decision</span>`
+      ? `<span class="muted">awaiting client decision</span>`
       : row.decision;
     blocks.push(`<div class="card"><p><strong>${row.itemId}</strong> — expected ${row.expected}, observed ${row.observed} (${row.reading}, ${row.state})</p>`
       + photo + boxNote
-      + `<p>Reviewer decision: ${decision}</p>`
+      + (row.hint === null ? "" : `<p class="muted">Photo tip: ${row.hint}</p>`)
+      + `<p>Client decision: ${decision}</p>`
       + `<p class="muted">Evidence fingerprint (SHA-256):</p><p class="hash">${row.fingerprint}</p></div>`);
   }
   const group = (label: string, ids: string[]): string =>
@@ -285,11 +286,11 @@ export function reportDocument(data: ReportData, photoUrls: Array<string | null>
     + (data.checkin === null ? "" : `<p>Check-in: ${data.checkin.status}${data.checkin.distanceM === null ? "" : ` (${Math.round(data.checkin.distanceM)} m)`} · accuracy ${data.checkin.band}${data.checkin.stale ? " · stale" : ""}</p><p class="muted">Device location at check-in. Not the photo capture location, and not proof of attendance.</p>`)
     + (data.followUpOf === null ? "" : `<p>Follow-up of mission ${data.followUpOf} — parent items: ${data.parentItemIds.join(", ")}</p>`)
     + `<p class="muted">Record created (server time): ${data.created} · Deadline: ${data.deadline}</p>`
-    + group("Awaiting reviewer decision", data.unresolved)
+    + group("Awaiting client decision", data.unresolved)
     + group("Confirmed mismatches", data.mismatched)
     + group("Inconclusive", data.inconclusive)
     + blocks.join("")
-    + `<p class="muted">Times shown are server record times. No photo capture time or location is recorded.</p>`
+    + `<p class="muted">Times shown are server record times. No photo capture time or photo location is recorded; any check-in above is a separate, consented device location.</p>`
     + `<p class="muted">Fingerprints are SHA-256 of the stored bytes: they prove the bytes are unchanged, not what the camera saw.</p>`
     + `<p class="muted">Companion machine-readable evidence: JSON export pack (unsigned).</p>`
     + `</body></html>`;

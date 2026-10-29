@@ -10,11 +10,11 @@ describe("F2 landing without network", () => {
     for (const s of [
       "FieldProof", "by 180Climate",
       "Field evidence people can trust.",
-      "A client asks for a field check. The field professional is guided item by item. Meta's Muse Spark reads every label. A person makes the final call.",
+      "Request a field check, guide the field professional item by item, let Meta's Muse Spark read each tag, flag what needs a closer look, and keep a person in charge of every decision, with an evidence report and targeted follow-ups.",
       "Start a field check", "How it works",
       "Client brief", "Guided capture", "AI label reading", "Human decision",
       "Now", "Next", "Future",
-      "Guided capture", "Label reading", "Human decision", "Evidence report",
+      "Guided capture", "AI review suggestions", "Human decision", "Evidence report",
       "Targeted follow-up", "Optional location check-in",
       "AI agents requesting field checks",
       "Hands-free capture on display glasses",
@@ -23,6 +23,8 @@ describe("F2 landing without network", () => {
     ]) {
       assert.ok(html.includes(s), s);
     }
+    // R1: the strip header is plain, with no defensive aside.
+    assert.ok(!html.includes("Only what is actually implemented"));
     // No live-glasses claim: glasses appear only in the Future strip.
     assert.ok(!html.match(/glasses.{0,120}live|live.{0,120}glasses/i));
     // Zero-fetch, zero-dependency surface: inline SVG is the only graphic.

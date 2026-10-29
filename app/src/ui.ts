@@ -60,6 +60,9 @@ async function render(): Promise<void> {
   dropUrls();
   const r = parseHashRoute(window.location.hash);
   const el = app();
+  // R1: the landing has its own top bar, so the page-shell heading hides there.
+  const shellH1 = document.querySelector("body > h1") as HTMLElement | null;
+  if (shellH1 !== null) shellH1.hidden = r.name === "landing";
   try {
     if (r.name === "landing") viewLanding(el);
     else if (r.name === "new") viewNew(el);

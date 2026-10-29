@@ -170,7 +170,7 @@ describe("Stage 1a remedy: isolation, readiness, labels", () => {
     assert.equal(data.items[0].fingerprint, "ab".repeat(32));
     assert.ok(data.items[0].box !== null);
     const doc = reportDocument(data, ["blob:photo-1", null, null]);
-    assert.ok(doc.includes("Awaiting reviewer decision: b3"));
+    assert.ok(doc.includes("Awaiting client decision: b3"));
     assert.ok(doc.includes("Confirmed mismatches: b2"));
     assert.ok(!doc.includes("Inconclusive:"));
     assert.ok(doc.includes("ab".repeat(32)));
@@ -215,7 +215,7 @@ describe("Stage 2a two-axis review summary", () => {
     const text = summaryLines(summarizeReview(mixed())).join("\n");
     assert.ok(text.includes("1 mismatched reading"));
     assert.ok(!text.includes("Confirmed mismatch"));
-    assert.ok(text.includes("2 awaiting reviewer decision"));
+    assert.ok(text.includes("2 awaiting client decision"));
     assert.ok(text.includes("1 match out of 4"));
   });
 
