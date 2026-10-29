@@ -10,6 +10,7 @@ import { landingHTML } from "./landing.ts";
 import { suggestReview } from "../shared/suggest.ts";
 import { buildReport, plainCheckin, plainItem, plainState, plainWorkerItem, reportDocument } from "./report.ts";
 import { summarizeReview, summaryLines } from "../shared/reviewSummary.ts";
+import { briefOutOfDate } from "./briefStale.ts";
 
 const app = (): HTMLElement => document.getElementById("app") as HTMLElement;
 let revoked: string[] = [];
@@ -920,7 +921,8 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   flash = "";
   // Stage 2a: concise two-axis summary above the item cards — exceptions
   // first, matches as a count, undecided mismatches never "confirmed".
-  const reviewSummary = `<div class="card" id="r-summary"><p><strong>Summary</strong></p>${summaryLines(summarizeReview(m)).map((l) => `<p>${esc(l)}</p>`).join("")}</div>`;
+  const summaryInner = (mm: typeof m): string => `<p><strong>Summary</strong></p>${summaryLines(summarizeReview(mm)).map((l) => `<p>${esc(l)}</p>`).join("")}`;
+  const reviewSummary = `<div class="card" id="r-summary">${summaryInner(m)}</div>`;
   const reviewBrief = m.brief == null ? ""
     : `<div class="card" id="r-brief"><p><strong>Brief</strong></p>${
       (m.brief.title === undefined || m.brief.title === "" ? "" : `<p><strong>${esc(m.brief.title)}</strong></p>`)
@@ -928,12 +930,31 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       + (m.brief.instructions === undefined || m.brief.instructions === "" ? "" : `<p>${esc(m.brief.instructions)}</p>`)
     }</div>`;
   el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewBrief}${checkinCard(m.checkin)}${reviewSummary}
-    <button id="r-brief">AI brief (suggestion, a person decides)</button><div id="r-bout"></div>
+    <button id="r-ai">AI brief (suggestion, a person decides)</button><div id="r-bout"></div>
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
     <button id="r-print">Print report</button><div id="r-out"></div>
     ${m.state === "decided" ? `<div class="card" id="r-follow"><p><strong>Create follow-up</strong> <span class="muted">Mismatched or inconclusive items only — matched items are excluded.</span></p><div id="r-fitems"></div><label>Site<input id="r-fsite" type="text" /></label><label>Deadline<input id="r-fdl" type="datetime-local" /></label><p>Deadline time zone (required, choose one): <span id="r-ftzrow"></span></p><label>Access code<input id="r-fcode" type="password" autocomplete="off" /></label><button id="r-fgo">Create follow-up</button><div id="r-fout"></div><div id="r-fdone"></div></div>` : ""}`;
+  // R1e: every recorded decision bumps this counter. A shown AI brief is then
+  // marked out of date (never silently kept), and the summary is re-read.
+  let decisionEpoch = 0;
+  let summarySeq = 0;
+  const showBriefStale = (): void => {
+    const bout = document.getElementById("r-bout") as HTMLElement;
+    bout.innerHTML = `<p class="err">Out of date: decisions changed since this brief.</p><button id="r-brefresh">Refresh AI brief</button>`;
+    (document.getElementById("r-brefresh") as HTMLButtonElement).onclick = () => void askBrief();
+  };
+  const refreshSummary = async (): Promise<void> => {
+    const seq = ++summarySeq;
+    try {
+      const cur = await calls.state(missionId, token) as typeof s;
+      const box = document.getElementById("r-summary");
+      if (seq === summarySeq && box !== null) box.innerHTML = summaryInner(cur.mission);
+    } catch {
+      // Best effort: the recorded decision already stands.
+    }
+  };
   for (const e of m.expected) {
     const o = m.observed[e.itemId];
     const slot = el.querySelector(`[data-photo="${e.itemId}"]`) as HTMLElement;
@@ -967,6 +988,9 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       try {
         await calls.decide(missionId, token, e.itemId, decision);
         msg.innerHTML = `<p class="ok">Recorded: ${esc(plainItem(decision))}.</p>`;
+        decisionEpoch += 1;
+        if (document.getElementById("r-bcard") !== null) showBriefStale();
+        void refreshSummary();
       } catch (err) {
         msg.innerHTML = errBox(err);
       } finally {
@@ -983,19 +1007,19 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   // decisions, state transitions, or follow-up creation. After generation the
   // response fingerprint is compared with the current state fingerprint.
   const askBrief = async (): Promise<void> => {
-    const bb = document.getElementById("r-brief") as HTMLButtonElement;
+    const bb = document.getElementById("r-ai") as HTMLButtonElement;
     const bout = document.getElementById("r-bout") as HTMLElement;
     if (bb.disabled) return;
     bb.disabled = true;
+    const epochAtRequest = decisionEpoch;
     try {
       bout.innerHTML = `<p class="muted">Preparing an AI suggestion from the current evidence\u2026</p>`;
       const r = await calls.brief(missionId, token, crypto.randomUUID()) as {
         brief: { summary: string; recommendations: string[]; next_action: string }; fingerprint: string;
       };
       const cur = await calls.state(missionId, token) as { briefFingerprint?: string };
-      if (typeof cur.briefFingerprint === "string" && cur.briefFingerprint !== r.fingerprint) {
-        bout.innerHTML = `<p class="err">Out of date: decisions changed since this brief.</p><button id="r-brefresh">Refresh AI brief</button>`;
-        (document.getElementById("r-brefresh") as HTMLButtonElement).onclick = () => void askBrief();
+      if (briefOutOfDate({ epochAtRequest, epochNow: decisionEpoch, briefFingerprint: r.fingerprint, currentFingerprint: cur.briefFingerprint })) {
+        showBriefStale();
         return;
       }
       const act = r.brief.next_action === "finish_review" ? "Finish review"
@@ -1016,7 +1040,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       bb.disabled = false;
     }
   };
-  (document.getElementById("r-brief") as HTMLButtonElement).onclick = () => void askBrief();
+  (document.getElementById("r-ai") as HTMLButtonElement).onclick = () => void askBrief();
   (document.getElementById("r-finish") as HTMLButtonElement).onclick = async () => {
     const b = document.getElementById("r-finish") as HTMLButtonElement;
     if (b.disabled) return;
