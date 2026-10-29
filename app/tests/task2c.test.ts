@@ -122,15 +122,18 @@ describe("Repair 2c wall deadlines", () => {
     assert.ok(NOTE_PROMPT.includes("YYYY-MM-DDTHH:MM"));
   });
 
-  it("human model values validate and normalize; ambiguous ones fail shut", () => {
+  it("human model values validate and normalize; ambiguous ones empty with a hint", () => {
     const good = {
       site_label: "Dock A", expected_codes: ["B12"], deadline: "30 Oct 2026, 18:00",
       timezone: "", snippets: {},
     };
     assert.equal(validNoteDraft(good), true);
     assert.equal(toNoteDraft(good).deadline.value, "2026-10-30T18:00");
-    const bad = { ...good, deadline: "next Friday" };
-    assert.equal(validNoteDraft(bad), false);
+    // F1: "next Friday" must not reject the valid site/items — it becomes
+    // an empty deadline with a manual-entry hint in the UI.
+    const vague = { ...good, deadline: "next Friday" };
+    assert.equal(validNoteDraft(vague), true);
+    assert.equal(toNoteDraft(vague).deadline.value, "");
   });
 });
 

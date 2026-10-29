@@ -111,6 +111,7 @@ export async function uploadPhoto(
   idempotencyKey: string,
   bytes: Uint8Array,
   fetchFn: FetchFn = fetch,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<UploadedPhoto> {
   const plan = chunkPlan(bytes.length);
   const fullHash = await sha256HexWeb(bytes);
@@ -132,6 +133,7 @@ export async function uploadPhoto(
       bytesB64: Buffer.from(part).toString("base64"),
       hash: await sha256HexWeb(part),
     }, fetchFn);
+    if (onProgress !== undefined) onProgress(i + 1, plan.count);
   }
   const done = await post("upload-complete", { missionId, token, uploadId, itemId, idempotencyKey }, fetchFn);
   return { uploadId, serverHash: String(done.serverHash) };

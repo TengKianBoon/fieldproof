@@ -64,7 +64,11 @@ export function validNoteDraft(d: unknown): d is {
   for (const c of v.expected_codes) {
     if (typeof c !== "string" || !CODE_RE.test(c)) return false;
   }
-  if (typeof v.deadline !== "string" || normalizeWallDeadline(v.deadline) === "") return false;
+  // F1: any string deadline validates here — an ambiguous or unreadable
+  // value normalizes to "" with a manual-entry hint instead of rejecting
+  // the otherwise valid site/items. Concrete dates stay strict inside
+  // normalizeWallDeadline (no guessing, no relative dates, no zones).
+  if (typeof v.deadline !== "string") return false;
   if (typeof v.timezone !== "string") return false;
   if (typeof v.snippets !== "object" || v.snippets === null) return false;
   return true;

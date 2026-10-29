@@ -99,7 +99,7 @@ function staleItemMsg(m: string): string | null {
 
 function viewNew(el: HTMLElement): void {
   const dlDefault = toLocalInput(new Date(Date.now() + 24 * 3600 * 1000));
-  el.innerHTML = `<h1>New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
+  el.innerHTML = `<h1>Client — New collection</h1><p class="muted">How it works: create a mission, the worker photographs each box, the reviewer confirms.</p><div id="f-last"></div>
     <label>Site label<input id="f-site" type="text" value="Supplier dock A" /></label>
     <div id="f-codes"></div>
     <button id="f-add">Add another box</button>
@@ -373,17 +373,17 @@ let workIndex = 0;
 
 async function viewWork(el: HTMLElement, missionId: string, token: string): Promise<void> {
   const s = await calls.state(missionId, token) as {
-    mission: { state: string; siteLabel: string; items: BriefItem[] };
+    mission: { state: string; siteLabel: string; deadline: string; items: BriefItem[] };
   };
   const m = s.mission;
   if (m.state !== "capturing" && m.state !== "open" && m.state !== "consented") {
     const note = flash;
     flash = "";
-    el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))} — capture is closed.</p>`;
+    el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))} — capture is closed.</p>`;
     return;
   }
   if (m.state !== "capturing") {
-    el.innerHTML = `<h1>Collection</h1><p>${esc(m.siteLabel)}</p>
+    el.innerHTML = `<h1>Field professional — Collection</h1><p>${esc(m.siteLabel)}</p>
       <div class="card"><p>Consent: photos of each labelled box are collected as delivery evidence and shown to the reviewer.</p>
       <label>Worker ID<input id="w-id" type="text" value="worker-1" /></label>
       <button id="w-ok" class="primary">Accept and start</button></div><div id="w-out"></div>`;
@@ -405,9 +405,30 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
   }
   // Guided capture: one item at a time ("Item k of N") with previous/next.
   // Headings show photo-words only, so readings never leak to the worker.
+  // F1: the assignment header names site, deadline with zone, item count,
+  // and three steps; progress counts completed vs remaining items.
+  const doneCount = (list: Array<{ state: string }>): number =>
+    list.filter((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive").length;
+  const fmtDeadline = (iso: string): string => {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    let zone = "UTC";
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    } catch {
+      // Keep UTC.
+    }
+    return `${d.toLocaleString()} ${zone}`;
+  };
   if (workMission !== missionId) {
     workMission = missionId;
     workIndex = 0;
+    try {
+      const saved = Number(sessionStorage.getItem(`fw-pos-${missionId}`));
+      if (Number.isInteger(saved) && saved >= 0 && saved < m.items.length) workIndex = saved;
+    } catch {
+      // Private mode: start at the first item.
+    }
   }
   if (workIndex >= m.items.length) workIndex = 0;
   if (workIndex < 0) workIndex = 0;
@@ -424,15 +445,26 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       <button data-shoot="${esc(cur.itemId)}" class="primary">Take photo</button>`}
       <div data-msg="${esc(cur.itemId)}"></div></div>`;
   const allDone = m.items.every((it) => it.state === "matched" || it.state === "mismatched" || it.state === "inconclusive");
-  el.innerHTML = `<h1>Collection ${esc(shortId(missionId))}</h1><p class="muted">Item ${k + 1} of ${m.items.length}</p><div id="w-items">${card}</div>
+  const received = doneCount(m.items);
+  const remaining = m.items.length - received;
+  el.innerHTML = `<h1>Field professional — Collection ${esc(shortId(missionId))}</h1><p class="muted">${esc(m.siteLabel)} · Due ${esc(fmtDeadline(m.deadline))} · ${m.items.length} boxes</p><div class="card"><p><strong>How to finish:</strong> 1. Photograph each label. 2. Check every item shows Photo received. 3. Send for review.</p></div><p class="muted">Item ${k + 1} of ${m.items.length} · ${received} received · ${remaining} to go</p><div id="w-items">${card}</div>
     <div class="row"><button id="w-prev"${k === 0 ? " disabled" : ""}>Previous</button><button id="w-next"${k === m.items.length - 1 ? " disabled" : ""}>Next</button></div>
     <button id="w-review" class="primary" ${allDone ? "" : "disabled"}>Send for review</button><div id="w-out"></div>`;
+  const savePos = (n: number): void => {
+    try {
+      sessionStorage.setItem(`fw-pos-${missionId}`, String(n));
+    } catch {
+      // Private mode: position is memory-only.
+    }
+  };
   (document.getElementById("w-prev") as HTMLButtonElement).onclick = () => {
     workIndex = k - 1;
+    savePos(workIndex);
     void render();
   };
   (document.getElementById("w-next") as HTMLButtonElement).onclick = () => {
     workIndex = k + 1;
+    savePos(workIndex);
     void render();
   };
   // Finished items render no controls, so there is nothing to wire.
@@ -452,7 +484,12 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       try {
         const small = await shrinkPhoto(f);
         const attempt = `a${Date.now()}`;
-        const up = await uploadPhoto(missionId, token, it.itemId, attempt, `${it.itemId}-${attempt}`, small);
+        // F1: genuine per-chunk progress when there are several chunks,
+        // otherwise the indeterminate busy line above stays.
+        const up = await uploadPhoto(missionId, token, it.itemId, attempt, `${it.itemId}-${attempt}`, small,
+          undefined, (done, total) => {
+            if (total > 1) msg.innerHTML = `<p class="muted">Uploading chunk ${done} of ${total}…</p>`;
+          });
         const cap = await calls.capture(missionId, token, it.itemId, up.uploadId) as { state: string };
         if (cap.state === "unclear") {
           const head = el.querySelector(`[data-item="${it.itemId}"] > p`) as HTMLElement | null;
@@ -526,7 +563,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   const m = s.mission;
   if (m.state !== "in_review" && m.state !== "decided") {
     const photos = m.expected.filter((e) => m.observed[e.itemId]?.uploadId).length;
-    el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for worker — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
+    el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1><div class="card"><p>Waiting for worker — ${photos} of ${m.expected.length} photos so far.</p><button id="r-refresh">Refresh</button></div>`;
     (document.getElementById("r-refresh") as HTMLButtonElement).onclick = () => void render();
     return;
   }
@@ -544,7 +581,7 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
   // Stage 2a: concise two-axis summary above the item cards — exceptions
   // first, matches as a count, undecided mismatches never "confirmed".
   const reviewSummary = `<div class="card" id="r-summary"><p><strong>Summary</strong></p>${summaryLines(summarizeReview(m)).map((l) => `<p>${esc(l)}</p>`).join("")}</div>`;
-  el.innerHTML = `<h1>Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewSummary}
+  el.innerHTML = `<h1>Client — Review ${esc(shortId(missionId))}</h1>${note === "" ? "" : `<p class="ok">${esc(note)}</p>`}<p class="muted">Status: ${esc(plainState(m.state))}</p>${reviewSummary}
     <div id="r-items">${cards.join("")}</div>
     <button id="r-finish" class="primary"${m.state === "in_review" ? "" : " hidden"}>Finish review</button>
     <button id="r-dl"${m.state === "decided" ? "" : " hidden"}>Download evidence pack (JSON)</button>
