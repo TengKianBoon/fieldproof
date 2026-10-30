@@ -1,6 +1,6 @@
 // J2 Jobs and bids screens: routes, link builders, pure renderers (escaped,
 // code-free bidder text, unique ids), the health-gated landing link, the
-// explicit-zone deadline helper, and the 4ofX release wording.
+// explicit-zone deadline helper, and the agreed release wording.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

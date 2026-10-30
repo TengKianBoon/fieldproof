@@ -42,3 +42,11 @@ app/.local-fixtures/
 
 # S11: local recovery backups (e.g. stray-ref bytes) stay out of git.
 .recovery/
+
+# Tip tidy (5X247): internal working notes stay on disk, out of the published tip.
+.agents/
+AGENTS.md
+muse-runs/
+docs/setup-status.md
+docs/setup-verification.md
+docs/workflow.md
