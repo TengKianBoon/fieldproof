@@ -6,7 +6,7 @@
 
 > **AI can't walk into a forest.** FieldProof lets a client, or their AI agent, ask a person on the ground for evidence. Meta's Muse Spark reads it, and a person stays in charge.
 
-**Live demo** and **3-minute video**: links added at release. · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
+**[Live demo](https://fieldproof-180climate.netlify.app)** · **3-minute video**: link added at release · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
 
 FieldProof is a field assignment and evidence-review workflow. A client requests a field check. The field professional is guided item by item on their phone. **Meta's Muse Spark** reads each tag, FieldProof flags what needs a closer look, and **a person makes every decision**, with an evidence report and targeted follow-ups.
 
@@ -139,8 +139,9 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 
 - **Next:** AI agents requesting field checks across the 180Climate Fieldwork network.
 - **Next:** WebMCP, so Meta AI can request a field check through the same three tools the MCP server offers today.
-- **Future:** hands-free capture on display glasses.
-- Pilot jobs in the 180Climate Fieldwork network.
+- **Next:** pilot jobs in the 180Climate Fieldwork network.
+- **Next: field work without signal.** Capture and queue evidence on the phone, marked "analysis pending" until signal returns; nothing read offline is shown as verified, and the expected answers never go to field devices.
+- **Future:** hands-free capture on display glasses, designed for their limits. Meta Ray-Ban Display has 2 GB of working memory, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
 
 ## Honest limits
 
