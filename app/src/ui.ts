@@ -6,7 +6,7 @@ import "./buffer-shim.ts";
 import "./ui.css";
 import { parseHashRoute, workLink, reviewLink, jobOwnerLink, jobBidLink, shrinkPhoto, uploadPhoto, evidenceBlob, calls, BRIEF_LEAK_MESSAGE, briefLeakTarget } from "./client.ts";
 import { buildGlassesHUD, GLASSES_LABEL } from "./glasses.ts";
-import { jobErrorWords, jobInstant, renderBid, renderClaim, renderJobForm, renderOwner } from "./jobsView.ts";
+import { jobErrorWords, jobInstant, jobWhen, renderBid, renderClaim, renderJobForm, renderOwner } from "./jobsView.ts";
 import type { BidderCheck, BidderJobView, OwnerCheck } from "./jobsView.ts";
 import type { FieldJob } from "../shared/fieldJobs.ts";
 import { landingHTML } from "./landing.ts";
@@ -196,7 +196,7 @@ function checkinCard(v: unknown, geo: GeoView | null = null): string {
   // an on-request OpenStreetMap view (built from numbers only).
   const loc = geo === null ? null : locationSectionHtml(geo, false);
   return `<div class="card" id="r-checkin"><p><strong>Check-in</strong> — ${esc(plainCheckin(c.status))}${c.distanceM === null ? "" : ` (${Math.round(c.distanceM)} m)`} · accuracy ±${Math.round(c.accuracyM)} m${c.stale ? " · stale" : ""}${c.lowAccuracy ? " · low accuracy" : ""}</p>`
-    + `<p class="muted">Fix ${esc(c.fixTime)} (${esc(ageWords(Date.parse(c.fixTime), Date.now()))} old).</p><p class="muted">${esc(CHECKIN_NOTE)}</p>${loc ?? ""}</div>`;
+    + `<p class="muted">Fix ${esc(jobWhen(c.fixTime))} (${esc(ageWords(Date.parse(c.fixTime), Date.now()))} old).</p><p class="muted">${esc(CHECKIN_NOTE)}</p>${loc ?? ""}</div>`;
 }
 
 // M1: the live map loads only when asked (no third-party request otherwise).
