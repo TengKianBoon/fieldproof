@@ -351,7 +351,7 @@ export function createFieldProofServer(cfg: AgentConfig) {
     const id = str(a.mission_id);
     if (id === null) return fail("mission_id is required.");
     const token = sessions.get(id);
-    if (token === undefined) return fail("This session can only follow checks it created (links are never stored on disk). Ask the client for the review link instead.");
+    if (token === undefined) return fail("This session can only follow checks it created, or checks from a job it drafted once get_job_status reports a professional accepted (links are never stored on disk). Ask the client for the review link instead.");
     const r = await call(`mission-state?missionId=${encodeURIComponent(id)}`, { method: "GET", headers: { "x-mission-token": token } });
     if (r.status !== 200 || r.body === null) return explain(r.status, r.body);
     const m = r.body.mission as MissionView;
@@ -377,7 +377,7 @@ export function createFieldProofServer(cfg: AgentConfig) {
     const id = str(a.mission_id);
     if (id === null) return fail("mission_id is required.");
     const token = sessions.get(id);
-    if (token === undefined) return fail("This session can only follow checks it created (links are never stored on disk). Ask the client for the evidence report instead.");
+    if (token === undefined) return fail("This session can only follow checks it created, or checks from a job it drafted once get_job_status reports a professional accepted (links are never stored on disk). Ask the client for the evidence report instead.");
     const r = await call(`export-pack?missionId=${encodeURIComponent(id)}`, { method: "GET", headers: { "x-mission-token": token } });
     if (r.status !== 200 || r.body === null) return explain(r.status, r.body);
     const pack = r.body as { mission: MissionView; summary: ReviewSummary; exportedAt: string };
@@ -442,14 +442,24 @@ export function createFieldProofServer(cfg: AgentConfig) {
     const r = await call("job-status", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id, token }) });
     if (r.status !== 200 || r.body === null) return explain(r.status, r.body);
     const st = r.body.status as Json;
+    // J5: an accepted job's check arrives with a read-only requester link.
+    // Keep it in this session's memory only; the model never sees it.
+    const chk = r.body.check as Json | undefined;
+    let followable = false;
+    if (typeof chk === "object" && chk !== null && typeof chk.missionId === "string" && typeof chk.requesterToken === "string"
+      && chk.missionId === st.missionId) {
+      sessions.set(chk.missionId, chk.requesterToken);
+      followable = true;
+    }
     const state = String(st.status);
     const plain: Record<string, string> = { draft: "Draft: waiting for a person to publish it", open: "Open for bids", accepted: "A professional accepted", cancelled: "Cancelled" };
     const lines = [
       `Job ${id} (${String(st.title)}): ${plain[state] ?? state}.`,
       `Invited: ${String(st.invited)} · bids received: ${String(st.submitted)}${st.selectionPending === true ? " · a choice is waiting for the professional to accept" : ""}.`,
       st.engaged === true ? `Accepted: field check ${String(st.missionId)} was created. A person decides every item.` : "",
+      followable ? `You can now follow it read-only: get_field_check_status and get_evidence_pack with mission_id ${String(st.missionId)}.` : "",
     ].filter((x) => x !== "");
-    return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: st };
+    return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: { ...st, followable } };
   }
 
   async function callTool(name: string, args: unknown): Promise<ToolResult> {

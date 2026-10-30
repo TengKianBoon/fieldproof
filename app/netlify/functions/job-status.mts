@@ -1,9 +1,14 @@
 // J1b job-status: a job's status for its owner or for the client's AI agent
 // (read-only agent link). Counts and states only: no bids, prices, names,
 // contacts, item codes or links.
+// J5: once a professional has accepted, the agent link also receives a
+// read-only requester link for the resulting FieldProof check, so the
+// client's agent (its MCP server, never the model) can follow that check's
+// status and fetch its evidence pack. A requester link cannot capture,
+// decide, finish or follow up; a person still decides every item.
 import { blobsScope, json, store } from "../lib/_ctx.mts";
 import { FieldJobs, agentStatusView, type FieldJob } from "../../shared/fieldJobs.ts";
-import { jobsOff, needStatusReader, validJobId, type DeployCtx } from "../lib/jobs-http.mts";
+import { AGENT_ROLE, jobsOff, missionToken, needStatusReader, validJobId, type DeployCtx } from "../lib/jobs-http.mts";
 
 export default async function handler(req: Request, context?: DeployCtx): Promise<Response> {
   const off = jobsOff(req, context);
@@ -27,5 +32,9 @@ export default async function handler(req: Request, context?: DeployCtx): Promis
     throw e;
   }
   if (j === null) return json(404, { error: "not_found" });
-  return json(200, { status: agentStatusView(j) });
+  const out: Record<string, unknown> = { status: agentStatusView(j) };
+  if (who.value === AGENT_ROLE && j.engagement !== null) {
+    out.check = { missionId: j.engagement.missionId, requesterToken: missionToken(j.engagement.missionId, "requester") };
+  }
+  return json(200, out);
 }

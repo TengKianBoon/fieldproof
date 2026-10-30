@@ -127,7 +127,7 @@ Add it to any MCP client that runs local (stdio) servers, with Node 24:
 4. **A person selects one bid, and the professional accepts.** Exactly one FieldProof check is created for that job, even if both click at once, and the professional gets the field link.
 5. **The accepted engagement is recorded** (who, scope, value, date). There are no payments in the app; a success fee would be invoiced separately. The fee shown is an example, not yet live.
 
-**For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). For a job an agent drafts, the server issues only a read-only job link; the link that publishes, invites and selects is never sent to the agent or its MCP server. A person claims the job on the website with the access code, so an agent cannot publish, invite, choose or accept.
+**For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). For a job an agent drafts, the server issues only a read-only job link; the link that publishes, invites and selects is never sent to the agent or its MCP server. A person claims the job on the website with the access code, so an agent cannot publish, invite, choose or accept. Once a professional accepts, the agent can follow the resulting FieldProof check with `get_field_check_status` and fetch its evidence pack with `get_evidence_pack`, read-only. The loop closes: the agent asks, a person goes, a person decides, and the agent gets the evidence.
 
 ## Built during the Hackathon
 
