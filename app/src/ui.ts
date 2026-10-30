@@ -1294,12 +1294,16 @@ async function viewReview(el: HTMLElement, missionId: string, token: string): Pr
       const r = await calls.brief(missionId, token, crypto.randomUUID()) as {
         brief: { summary: string; recommendations: string[]; next_action: string }; fingerprint: string;
       };
-      const cur = await calls.state(missionId, token) as { briefFingerprint?: string };
+      const cur = await calls.state(missionId, token) as { briefFingerprint?: string; mission?: { state?: string } };
       if (briefOutOfDate({ epochAtRequest, epochNow: decisionEpoch, briefFingerprint: r.fingerprint, currentFingerprint: cur.briefFingerprint })) {
         showBriefStale();
         return;
       }
-      const act = r.brief.next_action === "finish_review" ? "Finish review"
+      // M3: once the review is finished, the next step never says "Finish review".
+      const finished = cur.mission?.state === "decided" || cur.mission?.state === "exported";
+      const act = finished
+        ? (r.brief.next_action === "send_follow_up" ? "Review finished; send a follow-up for the flagged items" : "Review finished; print or download the report")
+        : r.brief.next_action === "finish_review" ? "Finish review"
         : r.brief.next_action === "send_follow_up" ? "Send follow-up"
         : r.brief.next_action === "decide_remaining" ? "Decide remaining items" : r.brief.next_action;
       bout.innerHTML = `<div class="card" id="r-bcard"><p><strong>AI brief (suggestion, a person decides)</strong></p>`
