@@ -6,7 +6,7 @@
 
 > **AI can't walk into a forest.** FieldProof lets a client, or their AI agent, ask a person on the ground for evidence. Meta's Muse Spark reads it, and a person stays in charge.
 
-**[Live demo](https://fieldproof-180climate.netlify.app)** · **3-minute video**: link added at release · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
+**[Live demo](https://fieldproof-180climate.netlify.app)** · **[3-minute video](https://github.com/TengKianBoon/fieldproof/releases/download/fieldproof-demo-2026-10-30/fieldproof-demo.mp4)** · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
 
 FieldProof lets a client, or the client's AI agent, hire a person on the ground and get evidence that can be checked. A client posts a field job, or their AI agent drafts one for a person to publish. A field professional takes it on and is guided item by item on their phone. **Meta's Muse Spark** reads each tag, FieldProof flags what needs a closer look, and **a person makes every decision**. The evidence comes back as a report, and to the agent, read-only.
 
@@ -58,7 +58,9 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 
 ## Judge quick-start
 
-You need a phone (or a second screen). The [judge kit](docs/judge-kit/) has synthetic tags and a sample delivery note. The access code is in our project description on the hackathon submission page. The links you create work for 24 hours, so finish a check in one sitting.
+**No setup:** watch the [3-minute video](https://github.com/TengKianBoon/fieldproof/releases/download/fieldproof-demo-2026-10-30/fieldproof-demo.mp4), then open the [sample agent run](docs/judge-kit/sample-run/): the agent's transcript, the printed evidence report and the JSON evidence pack from one synthetic run on the live site (B71 flagged where B17 was expected).
+
+To try it yourself, you need a phone (or a second screen). The [judge kit](docs/judge-kit/) has synthetic tags and a sample delivery note. The access code is in our project description on the hackathon submission page. The links you create work for 24 hours, so finish a check in one sitting.
 
 **Quick check (about 5 minutes):**
 
