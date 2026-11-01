@@ -23,7 +23,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 1. **Hire a human** (a pilot feature, live with synthetic jobs). A client posts a field job with a budget range, or their AI agent drafts one. A person publishes it, invites professionals by private links and selects a bid; the professional accepts, and exactly one FieldProof check is created for them. See [Hire a human](#hire-a-human-jobs-and-bids-pilot-live-with-synthetic-jobs).
 2. **Client brief.** The check itself: site, items, deadline, and optional photo tips. A client can also create one directly: type it, ask Muse Spark to draft it from a plain request, or draft it from a photo of a delivery note. A person confirms every field before anything is created.
 3. **Guided capture.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. An optional, consented location check-in records where the device was.
-4. **AI reading.** Muse Spark reads each tag on the server and is instructed to answer "unclear" rather than guess. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is built in to locate the tag on the stored photo, but on our printed test tags it has not returned a box yet, so it is switched off on the live demo (`SAM_MODE=off`).
+4. **AI reading.** Muse Spark reads each tag on the server and is instructed to leave the code empty rather than guess when the label is not clearly readable. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is built in to locate the tag on the stored photo, but on our printed test tags it has not returned a box yet, so it is switched off on the live demo (`SAM_MODE=off`).
 5. **Review with suggestions.** The client sees a problems-first summary. A mismatch (B71 where B17 was expected) is flagged, never auto-corrected. FieldProof suggests what needs a closer look, and an on-request **AI brief** from Muse Spark sums up the open items. The client confirms each item.
 6. **Evidence and follow-up.** A printable evidence report and a JSON evidence pack, plus a follow-up check for just the flagged items. If an agent drafted the job, it can follow the check and fetch the evidence pack, read-only.
 
@@ -32,7 +32,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 | Model | What it does in FieldProof |
 |---|---|
 | `muse-spark-1.3`, function calling (the agent) | Acts as the client's agent through our MCP tools: drafts a job or check, follows it, fetches the evidence. A person publishes, chooses and decides |
-| `muse-spark-1.3`, vision with a strict JSON schema | Reads each tag on the server (`store: false`, no expected codes in the prompt); instructed to return "unclear" instead of guessing |
+| `muse-spark-1.3`, vision with a strict JSON schema | Reads each tag on the server (`store: false`, no expected codes in the prompt); instructed to leave the code empty when the label is not clearly readable |
 | `muse-spark-1.3`, function tool `create_field_mission` | Drafts a check from a plain request; a person confirms |
 | `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
 | `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
@@ -51,6 +51,7 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 ## Built to hold up in production
 
 - **367 automated tests** (`npm test`) and a strict TypeScript typecheck, including end-to-end runs of the real request handlers over mocked storage.
+- **Latest test run, 1 November 2026:** 367 passed, 0 failed, 0 skipped, on Node 22.23.4 with the synthetic fixtures. The documented target is Node 24; this run did not verify that runtime.
 - **Fail-closed production mode.** With `FIELDPROOF_ENV=production`, a missing link secret or storage backend stops the request instead of falling back, test seams are refused, and creating a check needs the access code.
 - **Health check.** `GET /.netlify/functions/health` reports `ready: true` only when every production setting is in place. It returns the version and yes/no flags, never a secret.
 - **Safe to retry.** Repeating a create with the same `idempotencyKey` returns the same check. Every write is conditional, with a bounded retry, inside one storage scope per request.
@@ -150,7 +151,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - **Next:** WebMCP, so Meta AI can request a field check through the same three tools the MCP server offers today.
 - **Next:** pilot jobs in the 180Climate Fieldwork network.
 - **Next: field work without signal.** Capture and queue evidence on the phone, marked "analysis pending" until signal returns; nothing read offline is shown as verified, and the expected answers never go to field devices.
-- **Future:** hands-free capture on display glasses, designed for their limits. Meta Ray-Ban Display has 2 GB of working memory, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
+- **Future:** hands-free capture on display glasses, designed for their limits. Display glasses have tight memory and battery limits, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
 
 ## Honest limits
 
@@ -160,6 +161,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - SAM 3.1 has not yet returned a label box on our printed test tags, so it is switched off on the live demo; the review shows the photo without a box.
 - Link revocation is per server instance and does not survive a restart.
 - The evidence pack is unsigned JSON.
+- No request rate limiter is implemented yet. The daily model-spend ceiling limits model spending; it is not a traffic-rate limit.
 - Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
 - FieldProof does not certify regulatory compliance.
 - Jobs and bids is a pilot: synthetic jobs only so far, introduction terms are a pilot draft, and no fee is charged by the app. Claiming a job uses the site's one shared access code; per-client accounts come later. Private bid links work for anyone who holds them, so they are shared only with the invited professional.
