@@ -168,7 +168,9 @@ export class Missions {
     if (gated !== null) return fail(gated);
     const o = m.observed[itemId];
     if (o === undefined) return fail("unknown_item");
-    if (o.state !== "expected" && o.state !== "closeup_requested" && o.state !== "unclear") {
+    // 4X501: unclear no longer accepted here (bad_item_state, never a
+    // throw); retakes arrive as closeup_requested via the implicit path.
+    if (o.state !== "expected" && o.state !== "closeup_requested") {
       return fail("bad_item_state");
     }
     const hasLabel = ev.label !== null && ev.label.trim() !== "";
@@ -228,6 +230,34 @@ export class Missions {
     const c = this.commit(m, v);
     if (!c.ok) return fail(c.error as string);
     return ok({ closeupsUsed: o.closeupsUsed });
+  }
+
+  // 4X501 implicit close-up for retakes (server-side, no UI change). Called
+  // at the start of the capture path before any reservation or paid read:
+  // unclear with budget left moves unclear -> closeup_requested via the
+  // existing edge (closeupsUsed += 1); exhausted unclear refuses with
+  // closeup_exhausted so the worker can use the inconclusive path. Items
+  // already on closeup_requested (explicit button, prior implicit request,
+  // or a retried upload) are left untouched and never counted twice.
+  ensureCloseupForRetake(missionId: string, itemId: string): Result<{ closeupsUsed: number; requested: boolean }> {
+    const l = this.loaded(missionId);
+    if (l === null) return fail("unknown_mission");
+    const { m, v } = l;
+    const gated = this.requireCapturing(m);
+    if (gated !== null) return fail(gated);
+    const o = m.observed[itemId];
+    if (o === undefined) return fail("unknown_item");
+    if (o.state === "expected" || o.state === "closeup_requested") {
+      return ok({ closeupsUsed: o.closeupsUsed, requested: false });
+    }
+    if (o.state !== "unclear") return fail("bad_item_state");
+    if (o.closeupsUsed >= MAX_CLOSEUPS) return fail("closeup_exhausted");
+    transitionItem("unclear", "closeup_requested");
+    o.state = "closeup_requested";
+    o.closeupsUsed += 1;
+    const c = this.commit(m, v);
+    if (!c.ok) return fail(c.error as string);
+    return ok({ closeupsUsed: o.closeupsUsed, requested: true });
   }
 
   markInconclusive(missionId: string, itemId: string): Result<Mission> {

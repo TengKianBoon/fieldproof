@@ -766,6 +766,11 @@ async function viewWork(el: HTMLElement, missionId: string, token: string): Prom
       } catch (e) {
         const m = e instanceof Error ? e.message : String(e);
         const stale = staleItemMsg(m);
+        if (m.includes("closeup_exhausted")) {
+          await calls.inconclusive(missionId, token, it.itemId);
+          await render();
+          return;
+        }
         msg.innerHTML = stale !== null ? `<p class="err">${esc(stale)}</p>`
           : m.includes("reader_unavailable")
             ? `<p class="err">The reading service did not respond - please take the photo again in a minute.</p>${diagLine(e)}`

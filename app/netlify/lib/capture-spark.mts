@@ -83,6 +83,16 @@ export async function captureSparkHandler(req: Request, fetchFn: typeof fetch = 
       const bytes = uploadBytes(uploadId);
       if (bytes === null) return { error: "upload_bytes_missing" };
       if (!sha256Equal(sha256Hex(bytes), rec.serverHash)) return { error: "hash_mismatch" };
+      // 4X501 implicit close-up: a retake on unclear consumes one close-up
+      // here, before the ledger reservation and the paid read below, so the
+      // phase-2 submit lands on closeup_requested and cannot throw.
+      // Exhaustion refuses before any reservation or read; a replay of the
+      // already-recorded upload consumes nothing.
+      if (o !== undefined) {
+        if (o.uploadId === uploadId) return { error: "already_handled" };
+        const im = c.missions.ensureCloseupForRetake(missionId, itemId);
+        if (!im.ok) return { error: im.error as string };
+      }
       const rs = c.ledger.reserve("model", missionId, uploadId, "spark-read", max);
       if (!rs.ok) return { error: rs.error as string };
       const entry = rs.value as LedgerEntry;

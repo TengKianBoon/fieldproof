@@ -35,6 +35,20 @@ async function mockCapture(req: Request): Promise<Response> {
   const bytes = uploadBytes(uploadId);
   if (bytes === null) return json(400, { error: "upload_bytes_missing" });
   if (!sha256Equal(sha256Hex(bytes), rec.serverHash)) return json(400, { error: "hash_mismatch" });
+  // 4X501 implicit close-up (mock-reader path, same rule as the spark path):
+  // a retake on unclear consumes one close-up before the read so the submit
+  // below cannot throw; exhaustion refuses before any read. Replaying the
+  // already-recorded upload returns its state without consuming another.
+  {
+    const o = missions.load(missionId)?.observed[itemId];
+    if (o !== undefined && o.uploadId === uploadId) {
+      return json(200, { missionId, itemId, state: workerItemState(o.state) });
+    }
+    if (o !== undefined) {
+      const im = missions.ensureCloseupForRetake(missionId, itemId);
+      if (!im.ok) return json(400, { error: im.error });
+    }
+  }
   const seen = (() => {
     try {
       return reader.read(bytes);
