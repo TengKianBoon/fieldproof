@@ -176,6 +176,7 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - **Next:** AI agents requesting field checks across the 180Climate Fieldwork network.
 - **Next:** WebMCP, so Meta AI can request a field check through the same three tools the MCP server offers today.
 - **Next:** pilot jobs in the 180Climate Fieldwork network.
+- **Next:** location-based hiring that shows how far a professional is from the site and estimates the cost when they pick up a job, and field records that capture coordinates, elevation and terrain with phone and Meta Ray-Ban Display glasses photos and video.
 - **Next: field work without signal.** Capture and queue evidence on the phone, marked "analysis pending" until signal returns; nothing read offline is shown as verified, and the expected answers never go to field devices.
 - **Future:** hands-free capture on display glasses, designed for their limits. Display glasses have tight memory and battery limits, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
 
