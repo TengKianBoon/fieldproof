@@ -139,6 +139,14 @@ Add it to any MCP client that runs local (stdio) servers, with Node 24:
 
 **For agents (MCP):** set `FIELDPROOF_JOBS=on` to add `post_field_job` (draft only) and `get_job_status` (counts and states only). For a job an agent drafts, the server issues only a read-only job link; the link that publishes, invites and selects is never sent to the agent or its MCP server. A person claims the job on the website with the access code, so an agent cannot publish, invite, choose or accept. Once a professional accepts, the agent can follow the resulting FieldProof check with `get_field_check_status` and fetch its evidence pack with `get_evidence_pack`, read-only. The loop closes: the agent asks, a person goes, a person decides, and the agent gets the evidence.
 
+## Real-world trial (3 Nov 2026)
+
+**Built on Meta:** FieldProof was built with **Meta's Muse Code** and runs on **Meta's Muse Spark** for tag reading, close-up requests and the reviewer's AI brief. Next, we plan hands-free guided evidence capture with **Meta Ray-Ban Display glasses**, shown as a concept rather than tested hardware.
+
+We ran a small, assisted trial with **6 people**, from home, on their own devices. Each photographed three handwritten paper sample tags and gave short feedback. Meta's Muse Spark read the tags; in the **2 checks whose readings we inspected**, it flagged the planned label mismatch. A person makes the final review decision; those human reviews are still pending. Participants found the flow simple and asked for clearer photo instructions and for coordinates and land-cover fields. These are early usability findings from home paper tags, not a field deployment. All six received the same fixed thank-you (Rp50,000), whatever their feedback.
+
+These home tests cover the guided phone capture and review part of FieldProof. The wider **hire-a-human pilot**, currently demonstrated with synthetic jobs, lets an AI agent draft a field job, local professionals bid, and a person choose who goes. The aim is **fair, paid work for local people close to home**. Next, we plan to use **Meta Ray-Ban Display glasses** for hands-free evidence capture; this is a plan, not tested FieldProof hardware.
+
 ## Built during the Hackathon
 
 FieldProof was built during Meta's Global AI Developer Hackathon. Hacking officially began on **26 Oct 2026 at 16:24 UTC**; the first commit in this repository is **27 Oct 2026, 03:12 UTC**, and the full history is preserved. Netlify's deploy records corroborate the timeline.
