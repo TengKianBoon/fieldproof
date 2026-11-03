@@ -6,9 +6,11 @@
 
 > **AI can't walk into a forest.** FieldProof lets a client, or their AI agent, ask a person on the ground for evidence. Meta's Muse Spark reads it, and a person stays in charge.
 
-**[Live demo](https://fieldproof-180climate.netlify.app)** · **[3-minute video](https://github.com/TengKianBoon/fieldproof/releases/download/fieldproof-demo-2026-10-30/fieldproof-demo.mp4)** · [Judge quick-start](#judge-quick-start) · [MIT licence](LICENSE)
+**[Live demo](https://fieldproof-180climate.netlify.app)** · **[3-minute video](https://github.com/TengKianBoon/fieldproof/releases/download/fieldproof-demo-2026-10-30/fieldproof-demo.mp4)** · [Judge quick-start](#judge-quick-start) · **[Location check-in + map](#location-check-in--map-live)** · [MIT licence](LICENSE)
 
 FieldProof lets a client, or the client's AI agent, hire a person on the ground and get evidence that can be checked. A client posts a field job, or their AI agent drafts one for a person to publish. A field professional takes it on and is guided item by item on their phone. **Meta's Muse Spark** reads each tag, FieldProof flags what needs a closer look, and **a person makes every decision**. The evidence comes back as a report, and to the agent, read-only.
+
+**Location context is live too:** the worker can share a one-time device check-in. The reviewer compares it with the planned site on a map, with distance, accuracy and time, to spot an unexpected check-in and decide where to follow up.
 
 Built for **Meta's Global AI Developer Hackathon** (Startup track).
 
@@ -22,10 +24,22 @@ It is the evidence layer of **180Climate's Fieldwork** direction: connecting the
 
 1. **Hire a human** (a pilot feature, live with synthetic jobs). A client posts a field job with a budget range, or their AI agent drafts one. A person publishes it, invites professionals by private links and selects a bid; the professional accepts, and exactly one FieldProof check is created for them. See [Hire a human](#hire-a-human-jobs-and-bids-pilot-live-with-synthetic-jobs).
 2. **Client brief.** The check itself: site, items, deadline, and optional photo tips. A client can also create one directly: type it, ask Muse Spark to draft it from a plain request, or draft it from a photo of a delivery note. A person confirms every field before anything is created.
-3. **Guided capture.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. An optional, consented location check-in records where the device was.
+3. **Guided capture and location context.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. They can also choose **Share location for this mission**: a one-time device check-in that the reviewer can compare with the planned site on a map, with distance, accuracy and time.
 4. **AI reading.** Muse Spark reads each tag on the server and is instructed to leave the code empty rather than guess when the label is not clearly readable. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is built in to locate the tag on the stored photo, but on our printed test tags it has not returned a box yet, so it is switched off on the live demo (`SAM_MODE=off`).
 5. **Review with suggestions.** The client sees a problems-first summary. A mismatch (B71 where B17 was expected) is flagged, never auto-corrected. FieldProof suggests what needs a closer look, and an on-request **AI brief** from Muse Spark sums up the open items. The client confirms each item.
 6. **Evidence and follow-up.** A printable evidence report and a JSON evidence pack, plus a follow-up check for just the flagged items. If an agent drafted the job, it can follow the check and fetch the evidence pack, read-only.
+
+## Location check-in + map (live)
+
+**See the check-in in the context of the planned site.** A client can set a site latitude, longitude and radius. On the phone, the worker chooses **Share location for this mission**. FieldProof records the device-reported position, accuracy, fix time and server receipt time. The review shows the site boundary, the check-in and its accuracy circle, and the distance from the site centre. A map can be opened on request.
+
+This gives the reviewer useful context alongside the photos: **spot an unexpected check-in, see how precise the location reading is, and decide where a follow-up is needed.** The worker stays in control: there is no background tracking, and declining location never fails the photo check. A stale or low-accuracy fix is marked unverified; an uncertain site-boundary comparison is inconclusive. A person keeps the final call.
+
+![Actual FieldProof location diagram with synthetic coordinates: a check-in 94 metres from a planned site centre, 100-metre site radius, and 5-metre reported accuracy](docs/images/location-check-in-synthetic.svg)
+
+*Synthetic example rendered by the shipping FieldProof map and check-in modules; no real person's location. The check-in is the device's reported position at that moment. It does not establish where a photo was taken or prove attendance.*
+
+**Try it:** follow the [judge-kit location walkthrough](docs/judge-kit/README.md#try-the-location-check-in-with-synthetic-coordinates). It includes made-up site/check-in coordinates and a browser Sensors option, so judges can see the map without sharing their actual location. Precise coordinates are restricted to the review role; loading the optional external map is a separate, disclosed action.
 
 ## Where Meta AI is used
 
@@ -73,6 +87,8 @@ To try it yourself, you need a phone (or a second screen). The [judge kit](docs/
 **The full loop (about 10 minutes):** on the live demo choose **Post a job (pilot)**, describe a job for the same three tags with a budget range, enter the access code and **Post job**, then **Publish**. Under **Invite a professional**, create a private bid link and open it in another window: **Send bid**. Back on the job, **Select** the bid; in the bid window, **Accept the job** and **Open your FieldProof link to start**. Continue from step 3 above, and use **Open the FieldProof review** on the job for step 4.
 
 **The agent itself** needs Node 24 and your own Meta API key: see [Use it from an AI agent](#use-it-from-an-ai-agent).
+
+**Also try the live location feature:** set a planned site when creating the check, share a synthetic check-in from the worker view, and inspect its distance and accuracy on the review map. The [location walkthrough](docs/judge-kit/README.md#try-the-location-check-in-with-synthetic-coordinates) gives the exact steps; location is optional throughout.
 
 ## Run it yourself
 
