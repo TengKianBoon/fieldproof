@@ -172,15 +172,3 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - **Next: field work without signal.** Capture and queue evidence on the phone, marked "analysis pending" until signal returns; nothing read offline is shown as verified, and the expected answers never go to field devices.
 - **Future:** hands-free capture on display glasses, designed for their limits. Display glasses have tight memory and battery limits, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
 
-## Honest limits
-
-- A demo with synthetic jobs and tags. No real customer job has run, and no real customer data has been collected.
-- Photos and records are stored in Netlify Blobs in the US; regional hosting comes before any pilot.
-- Model readings can be wrong. That is why a person decides every item.
-- SAM 3.1 has not yet returned a label box on our printed test tags, so it is switched off on the live demo; the review shows the photo without a box.
-- Link revocation is per server instance and does not survive a restart.
-- The evidence pack is unsigned JSON.
-- No request rate limiter is implemented yet. The daily model-spend ceiling limits model spending; it is not a traffic-rate limit.
-- Through a generic MCP client, the agent sees the review link it passes on. There, keeping decisions with people is enforced by the tools offered, not by cryptography.
-- FieldProof does not certify regulatory compliance.
-- Jobs and bids is a pilot: synthetic jobs only so far, introduction terms are a pilot draft, and no fee is charged by the app. Claiming a job uses the site's one shared access code; per-client accounts come later. Private bid links work for anyone who holds them, so they are shared only with the invited professional.
