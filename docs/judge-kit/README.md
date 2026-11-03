@@ -25,6 +25,8 @@ Synthetic materials for trying FieldProof without real field samples. They show 
 
 **What to look for:** the reviewer can compare the device check-in with a planned site, see the distance and accuracy, and spot a location that needs a follow-up. It is optional location context alongside the photos, not proof of their origin.
 
+**[20-second synthetic UI example](location-check-in-20s.mp4):** actual shipping renderer/classifier output for a check-in about94m from the site and another about448m away. The clip is labelled synthetic and makes no geolocation request. Use the steps below to try the full live workflow yourself.
+
 1. On the [live demo](https://fieldproof-180climate.netlify.app), choose **Start a field check** and use the access code supplied in the hackathon submission. Create the usual three-tag check. Set **Site latitude** to `-0.4996`, **Site longitude** to `101.4502` and **Site radius in metres** to `100`. Pick a valid deadline and time zone. These are synthetic example coordinates, not a tester's location.
 2. Before sharing location from the worker view, open your browser's DevTools **Sensors** panel and choose a **Custom location**: latitude `-0.4990`, longitude `101.4508`. Chrome documents the [Sensors geolocation override](https://developer.chrome.com/docs/devtools/sensors#override-geolocation). This supplies a made-up device position instead of your real location. Complete any location-permission prompt yourself only after the override is set.
 3. In the worker link, enter the normal consented collection flow and choose the actual button **Share location for this mission**. The browser reports the position, accuracy and time. The page acknowledges the check-in. Continue with the normal three photos and **Send for review**.

@@ -41,6 +41,8 @@ This gives the reviewer useful context alongside the photos: **spot an unexpecte
 
 **Try it:** follow the [judge-kit location walkthrough](docs/judge-kit/README.md#try-the-location-check-in-with-synthetic-coordinates). It includes made-up site/check-in coordinates and a browser Sensors option, so judges can see the map without sharing their actual location. Precise coordinates are restricted to the review role; loading the optional external map is a separate, disclosed action.
 
+**[Watch the 20-second location example](docs/judge-kit/location-check-in-20s.mp4)** — the shipping map/classification modules show a near-site and an unexpected check-in, using synthetic data. This is an illustrated UI example, not a new live sensor or field-accuracy test.
+
 ## Where Meta AI is used
 
 | Model | What it does in FieldProof |
