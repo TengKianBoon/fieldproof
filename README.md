@@ -12,22 +12,28 @@ FieldProof lets a client, or the client's AI agent, hire a person on the ground 
 
 **Location context is live too:** the worker can share a one-time device check-in. The reviewer compares it with the planned site on a map, with distance, accuracy and time, to spot an unexpected check-in and decide where to follow up.
 
-Built for **Meta's Global AI Developer Hackathon** (Startup track).
+Built for **Meta's Global AI Developer Hackathon** (Startup track), with **Meta's Muse Code**. Next: hands-free capture with **Meta Ray-Ban Display** glasses.
 
 ## Why it matters
 
 In forests, mines and property due diligence, field work often ends with photos in a chat and paperwork that is hard to check. Which bag was photographed? What did the tag say? Who decided when it didn't match? FieldProof makes those answers part of the record.
 
-It is the evidence layer of **180Climate's Fieldwork** direction: connecting the people who need answers from the ground with the professionals who can go and get them.
+It is the evidence layer of **180Climate's Fieldwork** direction: connecting the people who need answers from the ground with the professionals who can go and get them. For local people, it means fair, paid work close to home.
 
 ## How it works
 
 1. **Hire a human** (a pilot feature, live with synthetic jobs). A client posts a field job with a budget range, or their AI agent drafts one. A person publishes it, invites professionals by private links and selects a bid; the professional accepts, and exactly one FieldProof check is created for them. See [Hire a human](#hire-a-human-jobs-and-bids-pilot-live-with-synthetic-jobs).
 2. **Client brief.** The check itself: site, items, deadline, and optional photo tips. A client can also create one directly: type it, ask Muse Spark to draft it from a plain request, or draft it from a photo of a delivery note. A person confirms every field before anything is created.
 3. **Guided capture and location context.** The field professional opens a link (no install), gives consent, and is guided item by item ("Item 2 of 3"), with tips. They never see the expected codes or the comparison. They can also choose **Share location for this mission**: a one-time device check-in that the reviewer can compare with the planned site on a map, with distance, accuracy and time.
-4. **AI reading.** Muse Spark reads each tag on the server and is instructed to leave the code empty rather than guess when the label is not clearly readable. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). SAM 3.1 is built in to locate the tag on the stored photo, but on our printed test tags it has not returned a box yet, so it is switched off on the live demo (`SAM_MODE=off`).
+4. **AI reading.** Muse Spark reads each tag on the server and is instructed to leave the code empty rather than guess when the label is not clearly readable. An unclear photo leads to a targeted close-up request (at most two, then the item is marked inconclusive). The server compares the reading with the client's expected code and flags differences for review.
 5. **Review with suggestions.** The client sees a problems-first summary. A mismatch (B71 where B17 was expected) is flagged, never auto-corrected. FieldProof suggests what needs a closer look, and an on-request **AI brief** from Muse Spark sums up the open items. The client confirms each item.
 6. **Evidence and follow-up.** A printable evidence report and a JSON evidence pack, plus a follow-up check for just the flagged items. If an agent drafted the job, it can follow the check and fetch the evidence pack, read-only.
+
+## Home paper-tag usability trial
+
+At the **3 Nov 2026, 23:00 Bangkok** closeout, **9 people had submitted** the assisted home trial on their own devices, and **8 had also provided feedback**. Each trial used three handwritten sample tags to exercise the guided capture and label-reading flow.
+
+We inspected the original photos and stored AI readings from **2 of the 9 submissions**. In both, FieldProof's comparison flagged the planned **B17/B71 label mismatch**. Participants described a simple flow and suggested clearer photo instructions, coordinates and land-cover fields. These findings give us concrete priorities for improving the capture experience.
 
 ## Location check-in + map (live)
 
@@ -37,11 +43,11 @@ This gives the reviewer useful context alongside the photos: **spot an unexpecte
 
 ![Actual FieldProof location diagram with synthetic coordinates: a check-in 94 metres from a planned site centre, 100-metre site radius, and 5-metre reported accuracy](docs/images/location-check-in-synthetic.svg)
 
-*Synthetic example rendered by the shipping FieldProof map and check-in modules; no real person's location. The check-in is the device's reported position at that moment. It does not establish where a photo was taken or prove attendance.*
+*Illustrated check-in using synthetic coordinates and the shipping FieldProof map and check-in modules.*
 
 **Try it:** follow the [judge-kit location walkthrough](docs/judge-kit/README.md#try-the-location-check-in-with-synthetic-coordinates). It includes made-up site/check-in coordinates and a browser Sensors option, so judges can see the map without sharing their actual location. Precise coordinates are restricted to the review role; loading the optional external map is a separate, disclosed action.
 
-**[Watch the 20-second location example](docs/judge-kit/location-check-in-20s.mp4)** — the shipping map/classification modules show a near-site and an unexpected check-in, using synthetic data. This is an illustrated UI example, not a new live sensor or field-accuracy test.
+**[Watch the 20-second location example](docs/judge-kit/location-check-in-20s.mp4)** — the shipping map/classification modules show a near-site and an unexpected check-in, using synthetic data.
 
 ## Where Meta AI is used
 
@@ -52,7 +58,7 @@ This gives the reviewer useful context alongside the photos: **spot an unexpecte
 | `muse-spark-1.3`, function tool `create_field_mission` | Drafts a check from a plain request; a person confirms |
 | `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
 | `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
-| `sam-3.1` | Built in to locate the tag on the stored photo; switched off on the live demo because it has not returned a box on our printed test tags yet |
+| `sam-3.1` | Built in to locate the tag on the stored photo; off on the live demo until it works on our paper tags |
 
 ## Designed to be trusted
 
@@ -61,13 +67,13 @@ This gives the reviewer useful context alongside the photos: **spot an unexpecte
 - **A person decides every item.** Mismatches are flagged, never auto-corrected, and AI suggestions never decide.
 - **Spend-safe model calls:** each call reserves its maximum cost in a daily ledger before it runs, under a hard ceiling, and a storage retry never repeats a paid call.
 - **Role-scoped links** for client and field professional: signed, expiring, and never carried in query strings. Creating a check in production needs an access code.
-- **Honest fingerprints:** SHA-256 on the phone and the server shows the stored bytes are unchanged. It does not prove what the camera saw, and the report says so.
-- **Location is optional and consented.** A check-in is the device's location at that moment, not the photo's location and not proof of attendance.
+- **Photo integrity:** matching SHA-256 fingerprints on the phone and server let the reviewer check the stored photo bytes.
+- **Worker-controlled location context.** The worker chooses whether to share a one-time device check-in alongside their photos.
 
-## Built to hold up in production
+## Engineering and reliability
 
-- **367 automated tests** (`npm test`) and a strict TypeScript typecheck, including end-to-end runs of the real request handlers over mocked storage.
-- **Latest test run, 1 November 2026:** 367 passed, 0 failed, 0 skipped, on Node 22.23.4 with the synthetic fixtures. The documented target is Node 24; this run did not verify that runtime.
+- **377 automated tests passed** in the recorded 2 Nov 2026 offline validation on Node 24.22.1, including real request handlers exercised over mocked storage and providers.
+- **Strict TypeScript typecheck and production build passed** in the same validation. The checks cover retry handling, capture limits and replay/accounting behavior.
 - **Fail-closed production mode.** With `FIELDPROOF_ENV=production`, a missing link secret or storage backend stops the request instead of falling back, test seams are refused, and creating a check needs the access code.
 - **Health check.** `GET /.netlify/functions/health` reports `ready: true` only when every production setting is in place. It returns the version and yes/no flags, never a secret.
 - **Safe to retry.** Repeating a create with the same `idempotencyKey` returns the same check. Every write is conditional, with a bounded retry, inside one storage scope per request.
@@ -170,5 +176,5 @@ Existed before the event (and not in this repository): the 180Climate brand and 
 - **Next:** pilot jobs in the 180Climate Fieldwork network.
 - **Next:** location-based hiring that shows how far a professional is from the site and estimates the cost when they pick up a job, and field records that capture coordinates, elevation and terrain with phone and Meta Ray-Ban Display glasses photos and video.
 - **Next: field work without signal.** Capture and queue evidence on the phone, marked "analysis pending" until signal returns; nothing read offline is shown as verified, and the expected answers never go to field devices.
-- **Future:** hands-free capture on display glasses, designed for their limits. Display glasses have tight memory and battery limits, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled simulation; no custom FieldProof model runs on glasses, and a benchmark on real hardware comes before any claim of a best fit.
+- **Future:** hands-free capture on display glasses, designed for their limits. Display glasses have tight memory and battery limits, so the glasses would show short prompts and take the photo, the paired phone would hold the offline queue, and Muse Spark would read in the cloud, with a person confirming. The glasses view in this repository is a labelled concept simulation of that proposed workflow.
 
