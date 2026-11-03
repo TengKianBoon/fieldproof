@@ -20,3 +20,19 @@ Synthetic materials for trying FieldProof without real field samples. They show 
 | [`evidence-pack.json`](sample-run/evidence-pack.json) | The unsigned JSON evidence pack for the same three decisions |
 
 **How to use the tags:** show a tag on another screen (or print it) and photograph it from the field professional link. On a desktop browser, the photo button lets you choose the image file instead.
+
+## Try the location check-in with synthetic coordinates
+
+**What to look for:** the reviewer can compare the device check-in with a planned site, see the distance and accuracy, and spot a location that needs a follow-up. It is optional location context alongside the photos, not proof of their origin.
+
+1. On the [live demo](https://fieldproof-180climate.netlify.app), choose **Start a field check** and use the access code supplied in the hackathon submission. Create the usual three-tag check. Set **Site latitude** to `-0.4996`, **Site longitude** to `101.4502` and **Site radius in metres** to `100`. Pick a valid deadline and time zone. These are synthetic example coordinates, not a tester's location.
+2. Before sharing location from the worker view, open your browser's DevTools **Sensors** panel and choose a **Custom location**: latitude `-0.4990`, longitude `101.4508`. Chrome documents the [Sensors geolocation override](https://developer.chrome.com/docs/devtools/sensors#override-geolocation). This supplies a made-up device position instead of your real location. Complete any location-permission prompt yourself only after the override is set.
+3. In the worker link, enter the normal consented collection flow and choose the actual button **Share location for this mission**. The browser reports the position, accuracy and time. The page acknowledges the check-in. Continue with the normal three photos and **Send for review**.
+4. Open the client review. The diagram shows the **100 m planned-site radius**, the check-in point and its accuracy circle, and approximately **94 m from the site centre** for these example coordinates. The status uses the accuracy reported by your browser. The illustration below uses a simulated **5 m** accuracy; a less precise browser fix may be inconclusive or unverified instead.
+5. If you choose **Show on OpenStreetMap**, the app discloses that the external provider receives those coordinates. Use synthetic data for this demonstration. The drawn site diagram works without loading map tiles. Turn off the Sensors override when finished.
+
+![FieldProof shipping location-map renderer with synthetic site and check-in coordinates](../images/location-check-in-synthetic.svg)
+
+**Optional failure-path check:** Sensors also offers **Location unavailable**. Sharing then saves no new fix and leaves the photo workflow available. Declining location also does not fail the photo check. No background position watching is used.
+
+**How the reviewer benefits:** location context can flag an unexpected check-in before a person accepts the evidence or requests another visit. Accuracy and time remain visible so the reviewer can judge uncertainty. Device positions can be inaccurate or spoofed; a check-in does not establish where a photo was taken. The original sample agent run above has no location data and remains a separate example.
