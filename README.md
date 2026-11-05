@@ -58,7 +58,7 @@ This gives the reviewer useful context alongside the photos: **spot an unexpecte
 | `muse-spark-1.3`, function tool `create_field_mission` | Drafts a check from a plain request; a person confirms |
 | `muse-spark-1.3`, vision extraction | Drafts a check from a delivery-note photo, quoting the source text for each field; unknowns are flagged |
 | `muse-spark-1.3`, text with a strict JSON schema | The client's on-request AI brief, built from the item text only; cached per review state and capped per day |
-| `sam-3.1` | Built in to locate the tag on the stored photo; off on the live demo until it works on our paper tags |
+
 
 ## Designed to be trusted
 
